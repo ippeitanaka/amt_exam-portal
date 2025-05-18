@@ -74,7 +74,7 @@ export default function ResultsPage() {
   }
 
   // 合格基準（例として設定、実際の基準に合わせて調整してください）
-  const PASSING_SCORE = 180 // 合格点（例: 300点満点の60%）
+  const PASSING_SCORE = 180
 
   // 合格判定関数
   const isPassingScore = (score: any) => {

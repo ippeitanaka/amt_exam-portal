@@ -11,8 +11,8 @@ import TestResultsList from "@/components/test-results-list"
 import { useToast } from "@/hooks/use-toast"
 import { Users, FileSpreadsheet, BarChart, LogOut, AlertCircle, RefreshCw } from "lucide-react"
 import { Header } from "@/components/header"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getDashboardData } from "@/app/actions/dashboard" // サーバーアクションをインポート
 
 export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -24,7 +24,6 @@ export default function AdminDashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const supabase = createClientComponentClient()
 
   useEffect(() => {
     // 管理者ログイン状態を確認
@@ -47,35 +46,26 @@ export default function AdminDashboardPage() {
       setIsLoading(true)
       setError(null)
 
-      // 並行してデータを取得
-      const [testScoresResult, studentsResult, uniqueTestsResult] = await Promise.all([
-        getTestScores(),
-        getStudentCount(),
-        getUniqueTests(),
-      ])
+      // サーバーアクションを使用してダッシュボードデータを取得
+      const result = await getDashboardData()
 
-      // テスト結果を設定
-      if (testScoresResult.success) {
-        setTestScores(testScoresResult.data)
-      } else {
-        console.error("テスト結果取得エラー:", testScoresResult.error)
-        // エラーがあっても続行
-      }
+      if (result.success) {
+        // テスト結果を設定
+        setTestScores(result.testScores)
 
-      // 学生数を設定
-      if (studentsResult.success) {
-        setStudentCount(studentsResult.count)
-      } else {
-        console.error("学生数取得エラー:", studentsResult.error)
-        // エラーがあっても続行
-      }
+        // 学生数を設定
+        setStudentCount(result.studentCount)
 
-      // テスト数を設定
-      if (uniqueTestsResult.success) {
-        setTestCount(uniqueTestsResult.uniqueCount)
+        // テスト数を設定
+        setTestCount(result.testCount)
       } else {
-        console.error("テスト数取得エラー:", uniqueTestsResult.error)
-        // エラーがあっても続行
+        console.error("データ取得エラー:", result.error)
+        setError(result.error || "データの取得に失敗しました")
+        toast({
+          title: "エラー",
+          description: "データの取得に失敗しました",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("データ取得エラー:", error)
@@ -88,99 +78,6 @@ export default function AdminDashboardPage() {
     } finally {
       setIsLoading(false)
       setIsRefreshing(false)
-    }
-  }
-
-  // テスト結果を取得する関数
-  const getTestScores = async () => {
-    try {
-      console.log("テスト結果取得を開始します")
-      const { data, error } = await supabase
-        .from("test_scores")
-        .select("*")
-        .order("test_date", { ascending: false })
-        .limit(10) // パフォーマンス向上のため最新10件のみ取得
-
-      if (error) {
-        console.error("テスト結果取得エラー:", error)
-        return { success: false, error: error.message, data: [] }
-      }
-
-      console.log("テスト結果を取得しました:", data?.length || 0, "件")
-      return { success: true, data: data || [] }
-    } catch (error) {
-      console.error("テスト結果取得エラー:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "テスト結果の取得に失敗しました",
-        data: [],
-      }
-    }
-  }
-
-  // 学生数を取得する関数 - 修正版
-  const getStudentCount = async () => {
-    try {
-      console.log("学生数取得を開始します")
-
-      // 直接test_scoresテーブルから一意の学生IDを数える
-      return getStudentCountFromTestScores()
-    } catch (error) {
-      console.error("学生数取得エラー:", error)
-      return { success: false, error: "学生数の取得に失敗しました", count: 0 }
-    }
-  }
-
-  // test_scoresテーブルから学生数を取得するヘルパー関数
-  const getStudentCountFromTestScores = async () => {
-    try {
-      console.log("test_scoresテーブルから学生数を取得します")
-
-      // 一意の学生IDを取得するクエリ
-      const { data, error } = await supabase.from("test_scores").select("student_id")
-
-      if (error) {
-        console.error("テスト結果からの学生数取得エラー:", error)
-        return { success: false, error: error.message, count: 0 }
-      }
-
-      // 一意の学生IDを数える
-      const uniqueStudentIds = new Set(data?.map((item) => item.student_id) || [])
-      const count = uniqueStudentIds.size
-      console.log("テスト結果から学生数を取得しました:", count, "件")
-
-      return { success: true, count }
-    } catch (error) {
-      console.error("テスト結果からの学生数取得エラー:", error)
-      return { success: false, error: "学生数の取得に失敗しました", count: 0 }
-    }
-  }
-
-  // ユニークなテスト数を取得する関数
-  const getUniqueTests = async () => {
-    try {
-      console.log("テスト数取得を開始します")
-
-      // 一意のテスト名を取得するクエリ
-      const { data, error } = await supabase.from("test_scores").select("test_name")
-
-      if (error) {
-        console.error("テスト数取得エラー:", error)
-        return { success: false, error: error.message, uniqueCount: 0 }
-      }
-
-      // ユニークなテスト名の数を計算
-      const uniqueTests = new Set(data?.map((item) => item.test_name) || [])
-      console.log("テスト数を取得しました:", uniqueTests.size, "件")
-
-      return { success: true, uniqueCount: uniqueTests.size }
-    } catch (error) {
-      console.error("テスト数取得エラー:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "テスト数の取得に失敗しました",
-        uniqueCount: 0,
-      }
     }
   }
 

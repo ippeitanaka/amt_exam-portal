@@ -137,9 +137,13 @@ export default function TestResultsImport({ onImportSuccess }: TestResultsImport
           }
 
           // オプションフィールド
+          // student_nameカラムが存在しない場合は、このフィールドをスキップ
+          // 以下のコードをコメントアウトまたは削除
+          /*
           if (studentNameIndex >= 0 && values[studentNameIndex]) {
-            rowData.student_name = values[studentNameIndex]
+            rowData.student_name = values[studentNameIndex];
           }
+          */
 
           if (generalMorningIndex >= 0 && values[generalMorningIndex]) {
             rowData.general_morning = Number.parseInt(values[generalMorningIndex]) || null

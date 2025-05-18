@@ -84,9 +84,11 @@ export async function importTestResults(results: any[]) {
       formattedResult.total_score = result.total_score
 
       // 存在するカラムのみ追加
+      /*
       if (dbColumns.includes("student_name") && result.student_name !== undefined) {
-        formattedResult.student_name = result.student_name
+        formattedResult.student_name = result.student_name;
       }
+      */
 
       if (dbColumns.includes("general_morning") && result.general_morning !== undefined) {
         formattedResult.general_morning = result.general_morning

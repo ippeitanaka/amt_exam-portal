@@ -12,7 +12,7 @@ import { AlertCircle, Loader2, FileSpreadsheet, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { CharacterIcon } from "./character-icon"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { importStudents } from "@/app/actions/students" // サーバーアクションをインポート
 
 interface StudentImportProps {
   onImportSuccess?: (students: any[]) => void
@@ -24,7 +24,6 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
   const [success, setSuccess] = useState("")
   const [csvPreview, setCsvPreview] = useState<string[][]>([])
   const { toast } = useToast()
-  const supabase = createClientComponentClient()
 
   // CSVファイルをプレビュー表示する関数
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,9 +133,6 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
           // オプションフィールド
           if (idIndex >= 0 && values[idIndex]) {
             studentData.id = values[idIndex]
-          } else {
-            // IDがない場合は一意のIDを生成
-            studentData.id = Date.now() + Math.floor(Math.random() * 1000)
           }
 
           if (createdAtIndex >= 0 && values[createdAtIndex]) {
@@ -155,47 +151,33 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
         }
 
         try {
-          let successCount = 0
-          let errorCount = 0
+          // サーバーアクションを使用して学生データをインポート
+          const result = await importStudents(students)
 
-          for (const student of students) {
-            try {
-              // studentsテーブルに保存を試みる
-              const result = await addOrUpdateStudent(student)
+          if (result.success) {
+            setSuccess(result.message || `${students.length}件の学生情報をインポートしました`)
 
-              if (result.success) {
-                successCount++
-              } else {
-                errorCount++
-                console.error("学生インポートエラー:", result.error)
-              }
-            } catch (err) {
-              console.error("学生インポート処理エラー:", err)
-              errorCount++
+            toast({
+              title: "インポート完了",
+              description: result.message || `${students.length}件の学生情報をインポートしました`,
+            })
+
+            // インポート成功をコンポーネントに通知
+            if (onImportSuccess) {
+              onImportSuccess(students)
             }
+
+            // フォームをリセット
+            fileInput.value = ""
+            setCsvPreview([])
+          } else {
+            setError(result.error || "インポートに失敗しました")
+            toast({
+              title: "インポートエラー",
+              description: result.error || "インポートに失敗しました",
+              variant: "destructive",
+            })
           }
-
-          setSuccess(
-            `${successCount}件の学生情報をインポートしました${
-              errorCount > 0 ? `（${errorCount}件の処理に失敗しました）` : ""
-            }`,
-          )
-
-          toast({
-            title: "インポート完了",
-            description: `${successCount}件の学生情報をインポートしました${
-              errorCount > 0 ? `（${errorCount}件の処理に失敗しました）` : ""
-            }`,
-          })
-
-          // インポート成功をコンポーネントに通知
-          if (onImportSuccess) {
-            onImportSuccess(students)
-          }
-
-          // フォームをリセット
-          fileInput.value = ""
-          setCsvPreview([])
         } catch (error) {
           console.error("Import error:", error)
           setError(error instanceof Error ? error.message : "不明なエラーが発生しました")
@@ -222,74 +204,6 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
       })
     } finally {
       setIsImporting(false)
-    }
-  }
-
-  // 学生を追加または更新する関数
-  const addOrUpdateStudent = async (student: any) => {
-    try {
-      // 入力値の検証
-      if (!student || !student.student_id || !student.name || !student.password) {
-        return { success: false, error: "必須フィールドが不足しています" }
-      }
-
-      console.log("学生データを保存します:", student)
-
-      // まず既存の学生を確認
-      const { data: existingStudent, error: queryError } = await supabase
-        .from("students")
-        .select("student_id")
-        .eq("student_id", student.student_id)
-        .maybeSingle()
-
-      if (queryError) {
-        console.error("学生データ検索エラー:", queryError)
-        // エラーがあっても処理を続行（ローカルストレージには保存する）
-      }
-
-      let result
-
-      try {
-        if (existingStudent) {
-          // 既存の学生を更新
-          console.log("既存の学生を更新します:", student.student_id)
-          result = await supabase
-            .from("students")
-            .update({
-              name: student.name,
-              password: student.password,
-            })
-            .eq("student_id", student.student_id)
-        } else {
-          // 新しい学生を挿入
-          console.log("新しい学生を挿入します:", student.student_id)
-          result = await supabase.from("students").insert({
-            student_id: student.student_id,
-            name: student.name,
-            password: student.password,
-            created_at: new Date().toISOString(),
-          })
-        }
-
-        if (result.error) {
-          console.error("学生データ保存エラー:", result.error)
-          // エラーがあっても処理を続行（ローカルストレージには保存する）
-        } else {
-          console.log("学生データを保存しました")
-        }
-      } catch (dbError) {
-        console.error("データベース操作エラー:", dbError)
-        // エラーを無視して続行
-      }
-
-      // 学生情報をローカルストレージに保存するため、成功を返す
-      return { success: true }
-    } catch (error) {
-      console.error("学生データ保存エラー:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "学生データの保存に失敗しました",
-      }
     }
   }
 

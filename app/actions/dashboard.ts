@@ -12,7 +12,7 @@ console.log("SUPABASE_URL:", supabaseUrl ? "設定されています" : "未設�
 console.log("SUPABASE_ANON_KEY:", supabaseAnonKey ? "設定されています" : "未設定")
 console.log("SERVICE_ROLE_KEY:", supabaseServiceRoleKey ? "設定されています" : "未設定")
 
-// 管理者用のクライアント（サービスロールキーが設定されている場合のみ使用）
+// 管理者用のクライアント（サービスロールキーを使用）
 const adminSupabase = supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey)
   : createClient(supabaseUrl, supabaseAnonKey)
@@ -38,6 +38,7 @@ export async function getDashboardData() {
       testScores: testScoresResult.data || [],
       studentCount: studentsResult.count || 0,
       testCount: uniqueTestsResult.uniqueCount || 0,
+      error: testScoresResult.error || studentsResult.error || uniqueTestsResult.error || null,
     }
   } catch (error) {
     console.error("ダッシュボードデータ取得エラー:", error)
@@ -53,14 +54,13 @@ export async function getDashboardData() {
 
 async function getTestScores() {
   try {
-    // まず通常のクライアントで試す
-    let result = await supabase.from("test_scores").select("*").order("test_date", { ascending: false }).limit(10)
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (result.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      result = await adminSupabase.from("test_scores").select("*").order("test_date", { ascending: false }).limit(10)
-    }
+    // サービスロールキーを使用してテスト結果を取得
+    console.log("テスト結果取得を開始します（サービスロールキー使用）")
+    const result = await adminSupabase
+      .from("test_scores")
+      .select("*")
+      .order("test_date", { ascending: false })
+      .limit(10)
 
     if (result.error) {
       console.error("テスト結果取得エラー:", result.error)
@@ -81,14 +81,9 @@ async function getTestScores() {
 
 async function getStudentCount() {
   try {
-    // まず通常のクライアントで試す
-    let result = await supabase.from("students").select("student_id")
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (result.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      result = await adminSupabase.from("students").select("student_id")
-    }
+    // サービスロールキーを使用してstudentsテーブルから学生数を取得
+    console.log("studentsテーブルから学生数を取得します（サービスロールキー使用）")
+    const result = await adminSupabase.from("students").select("student_id")
 
     if (result.error) {
       console.error("学生テーブル確認エラー:", result.error)
@@ -109,16 +104,8 @@ async function getStudentCount() {
 // test_scoresテーブルから学生数を取得するヘルパー関数
 async function getStudentCountFromTestScores() {
   try {
-    console.log("test_scoresテーブルから学生数を取得します")
-
-    // まず通常のクライアントで試す
-    let result = await supabase.from("test_scores").select("student_id")
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (result.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      result = await adminSupabase.from("test_scores").select("student_id")
-    }
+    console.log("test_scoresテーブルから学生数を取得します（サービスロールキー使用）")
+    const result = await adminSupabase.from("test_scores").select("student_id")
 
     if (result.error) {
       console.error("テスト結果からの学生数取得エラー:", result.error)
@@ -139,14 +126,9 @@ async function getStudentCountFromTestScores() {
 
 async function getUniqueTests() {
   try {
-    // まず通常のクライアントで試す
-    let result = await supabase.from("test_scores").select("test_name")
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (result.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      result = await adminSupabase.from("test_scores").select("test_name")
-    }
+    // サービスロールキーを使用してテスト数を取得
+    console.log("テスト数取得を開始します（サービスロールキー使用）")
+    const result = await adminSupabase.from("test_scores").select("test_name")
 
     if (result.error) {
       console.error("テスト数取得エラー:", result.error)

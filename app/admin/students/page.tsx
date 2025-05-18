@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Header } from "@/components/header"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { getStudents, checkDatabaseStructure } from "@/app/actions/students"
 
 export default function StudentsPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -79,53 +80,36 @@ export default function StudentsPage() {
   const fetchStudents = async () => {
     try {
       console.log("学生データ取得を開始します")
+      setError("")
 
-      // studentsテーブルへのアクセスを完全に避け、直接test_scoresテーブルから学生情報を取得
-      console.log("test_scoresテーブルからデータを取得します")
-      const testScoresResult = await supabase
-        .from("test_scores")
-        .select("student_id, student_name")
-        .order("student_id", { ascending: true })
+      // サーバーアクションを使用して学生データを取得
+      const result = await getStudents()
 
-      if (testScoresResult.error) {
-        console.error("テスト結果からの学生データ取得エラー:", testScoresResult.error)
-        throw new Error(testScoresResult.error.message)
+      if (!result.success) {
+        console.error("学生データ取得エラー:", result.error)
+        setError(result.error || "学生データの取得に失敗しました")
+        // ローカルストレージのデータを使用
+        return loadFromLocalStorage()
       }
 
-      if (!testScoresResult.data || testScoresResult.data.length === 0) {
-        console.log("test_scoresテーブルにデータがありません")
+      if (!result.data || result.data.length === 0) {
+        console.log("データがありません")
         setDataSource("no_data")
-        return
+        return false
       }
 
-      // 一意の学生IDを抽出
-      const uniqueStudentIds = new Map()
-
-      for (const item of testScoresResult.data) {
-        if (item.student_id && !uniqueStudentIds.has(item.student_id)) {
-          uniqueStudentIds.set(item.student_id, {
-            student_id: item.student_id,
-            name: item.student_name || `学生${item.student_id}`,
-            password: "password", // デフォルト値
-            created_at: new Date().toISOString(),
-          })
-        }
-      }
-
-      const uniqueStudents = Array.from(uniqueStudentIds.values())
-      console.log("test_scoresテーブルから", uniqueStudents.length, "件の学生データを抽出しました")
-
-      // サーバーから取得したデータとローカルデータをマージ
-      const mergedStudents = mergeStudentData(students, uniqueStudents)
-      setStudents(mergedStudents)
-      setDataSource("test_scores_table")
+      console.log(result.source + "から", result.data.length, "件の学生データを取得しました")
+      setStudents(result.data)
+      setDataSource(result.source)
 
       // 取得したデータをローカルストレージにもキャッシュ
-      localStorage.setItem("cachedStudents", JSON.stringify(mergedStudents))
+      localStorage.setItem("cachedStudents", JSON.stringify(result.data))
+      return true
     } catch (error) {
       console.error("学生データ取得エラー:", error)
       setError(error instanceof Error ? error.message : "学生データの取得に失敗しました")
-      throw error // 上位のエラーハンドラに再スロー
+      // ローカルストレージのデータを使用
+      return loadFromLocalStorage()
     }
   }
 
@@ -181,25 +165,19 @@ export default function StudentsPage() {
     }
   }
 
-  // データベース構造を確認する関数
   const handleCheckDbStructure = async () => {
     try {
       setIsCheckingDb(true)
       console.log("データベース構造を確認します")
 
-      // test_scoresテーブルの構造を確認（studentsテーブルへのアクセスを避ける）
-      const testScoresResult = await supabase.from("test_scores").select("*").limit(1)
+      // サーバーアクションを使用してデータベース構造を確認
+      const result = await checkDatabaseStructure()
 
-      const dbStructureData = {
-        success: true,
-        studentsColumns: [], // studentsテーブルへのアクセスを避ける
-        studentsError: "アクセスを避けるため確認していません",
-        testScoresColumns:
-          testScoresResult.data && testScoresResult.data.length > 0 ? Object.keys(testScoresResult.data[0]) : [],
-        testScoresError: testScoresResult.error ? testScoresResult.error.message : null,
+      if (!result.success) {
+        throw new Error(result.error || "データベース構造の確認に失敗しました")
       }
 
-      setDbStructure(dbStructureData)
+      setDbStructure(result)
       toast({
         title: "データベース構造確認",
         description: "データベース構造を確認しました",
@@ -297,7 +275,10 @@ export default function StudentsPage() {
               <Database className="h-4 w-4" />
               <div className="flex flex-col">
                 <p className="font-bold">データベース構造:</p>
-                <p>studentsテーブル: {dbStructure.studentsError || "確認済み"}</p>
+                <p>studentsテーブルのカラム: {dbStructure.studentsColumns.join(", ") || "なし"}</p>
+                {dbStructure.studentsError && (
+                  <p className="text-yellow-600 dark:text-yellow-400">注意: {dbStructure.studentsError}</p>
+                )}
                 <p>test_scoresテーブルのカラム: {dbStructure.testScoresColumns.join(", ") || "なし"}</p>
                 {dbStructure.testScoresError && <p className="text-red-500">エラー: {dbStructure.testScoresError}</p>}
               </div>
