@@ -88,7 +88,50 @@ const subjectGroups = {
     "oriental_medicine_clinical_general",
   ],
   specialized: ["acupuncture_theory", "moxibustion_theory"],
+  common: [
+    "medical_overview",
+    "public_health",
+    "related_laws",
+    "anatomy",
+    "physiology",
+    "pathology",
+    "clinical_medicine_overview",
+    "clinical_medicine_detail",
+    "rehabilitation",
+    "oriental_medicine_overview",
+    "meridian_points",
+    "oriental_medicine_clinical",
+    "oriental_medicine_clinical_general",
+  ],
 }
+
+// 科目ごとの満点
+const MAX_SCORES = {
+  medical_overview: 2, // 医療概論
+  public_health: 10, // 衛生・公衆衛生学
+  related_laws: 4, // 関係法規
+  anatomy: 15, // 解剖学
+  physiology: 15, // 生理学
+  pathology: 6, // 病理学
+  clinical_medicine_overview: 20, // 臨床医学総論
+  clinical_medicine_detail: 30, // 臨床医学各論
+  rehabilitation: 8, // リハビリテーション医学
+  oriental_medicine_overview: 20, // 東洋医学概論
+  meridian_points: 20, // 経絡経穴概論
+  oriental_medicine_clinical: 20, // 東洋医学臨床論
+  oriental_medicine_clinical_general: 10, // 東洋医学臨床論（総合）
+  acupuncture_theory: 10, // はり理論
+  moxibustion_theory: 10, // きゅう理論
+}
+
+// 共通問題の満点
+const COMMON_MAX_SCORE = 180
+
+// 合格基準（60%）
+const PASSING_PERCENTAGE = 0.6
+
+// 合格基準点
+const PASSING_SCORE = (COMMON_MAX_SCORE + 10) * PASSING_PERCENTAGE // 190点の60% = 114点
 
 // パーセンタイルを計算する関数
 function calculatePercentile(scores: number[], score: number): number {
@@ -115,32 +158,51 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
     )
   }
 
-  // 合格基準（70点以上）
-  const passingScore = 70
+  // 各学生の合計点を計算し、合格判定を追加
+  const scoresWithPassFail = useMemo(
+    () =>
+      testScores.map((score) => {
+        // 各科目グループの合計点を計算
+        const basicMedicineScore = calculateGroupScore(score, subjectGroups.basic)
+        const clinicalMedicineScore = calculateGroupScore(score, subjectGroups.clinical)
+        const orientalMedicineScore = calculateGroupScore(score, subjectGroups.oriental)
+        const specializedScore = calculateGroupScore(score, subjectGroups.specialized)
+
+        // 共通問題の合計点を計算
+        const commonScore = calculateGroupScore(score, subjectGroups.common)
+
+        // はり師試験の合計点（共通問題 + はり理論）
+        const acupuncturistScore = commonScore + (score.acupuncture_theory || 0)
+
+        // きゅう師試験の合計点（共通問題 + きゅう理論）
+        const moxibustionistScore = commonScore + (score.moxibustion_theory || 0)
+
+        // はり師合格判定（共通問題 + はり理論の合計が114点以上）
+        const isAcupuncturistPassing = acupuncturistScore >= PASSING_SCORE
+
+        // きゅう師合格判定（共通問題 + きゅう理論の合計が114点以上）
+        const isMoxibustionistPassing = moxibustionistScore >= PASSING_SCORE
+
+        return {
+          ...score,
+          basic_medicine_score: basicMedicineScore,
+          clinical_medicine_score: clinicalMedicineScore,
+          oriental_medicine_score: orientalMedicineScore,
+          specialized_score: specializedScore,
+          common_score: commonScore,
+          acupuncturist_score: acupuncturistScore,
+          moxibustionist_score: moxibustionistScore,
+          acupuncturist_passing: isAcupuncturistPassing,
+          moxibustionist_passing: isMoxibustionistPassing,
+          // 両方合格の場合のみ合格とする
+          passing: isAcupuncturistPassing && isMoxibustionistPassing,
+        }
+      }),
+    [testScores],
+  )
 
   // 分析データを計算
   const analysis = useMemo(() => {
-    // 各学生の合計点を計算し、合格判定を追加
-    const scoresWithPassFail = testScores.map((score) => {
-      // 各科目グループの合計点を計算
-      const basicMedicineScore = calculateGroupScore(score, subjectGroups.basic)
-      const clinicalMedicineScore = calculateGroupScore(score, subjectGroups.clinical)
-      const orientalMedicineScore = calculateGroupScore(score, subjectGroups.oriental)
-      const specializedScore = calculateGroupScore(score, subjectGroups.specialized)
-
-      // 合格判定（全体で70点以上を合格とする）
-      const isPassing = score.total_score >= passingScore
-
-      return {
-        ...score,
-        basic_medicine_score: basicMedicineScore,
-        clinical_medicine_score: clinicalMedicineScore,
-        oriental_medicine_score: orientalMedicineScore,
-        specialized_score: specializedScore,
-        passing: isPassing,
-      }
-    })
-
     // 全体の平均点を計算
     const totalScores = scoresWithPassFail.map((s) => s.total_score)
     const averageScore = calculateAverage(totalScores)
@@ -156,9 +218,13 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
     const sortedScores = [...totalScores].sort((a, b) => a - b)
     const medianScore = sortedScores[Math.floor(sortedScores.length / 2)]
 
-    // 合格者数と合格率を計算
-    const passingCount = scoresWithPassFail.filter((s) => s.passing).length
-    const passingRate = (passingCount / scoresWithPassFail.length) * 100
+    // はり師合格者数と合格率を計算
+    const acupuncturistPassingCount = scoresWithPassFail.filter((s) => s.acupuncturist_passing).length
+    const acupuncturistPassingRate = (acupuncturistPassingCount / scoresWithPassFail.length) * 100
+
+    // きゅう師合格者数と合格率を計算
+    const moxibustionistPassingCount = scoresWithPassFail.filter((s) => s.moxibustionist_passing).length
+    const moxibustionistPassingRate = (moxibustionistPassingCount / scoresWithPassFail.length) * 100
 
     // 科目別の平均点を計算
     const subjectAverages: Record<string, number> = {}
@@ -175,7 +241,8 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
       subjectMinScores[subject] = Math.min(...scores)
 
       // 科目ごとの合格率 (60%以上を合格とする)
-      const passingThreshold = 6 // 例として10点満点中6点以上を合格とする
+      const maxScore = MAX_SCORES[subject as keyof typeof MAX_SCORES] || 10
+      const passingThreshold = maxScore * 0.6 // 60%以上を合格とする
       const passingCount = scores.filter((score) => score >= passingThreshold).length
       subjectPassingRates[subject] = (passingCount / scores.length) * 100
     })
@@ -206,6 +273,10 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
           id: score.student_id,
           name: score.student_name || `学生ID: ${score.student_id}`,
           score: score.total_score,
+          acupuncturist_score: score.acupuncturist_score,
+          moxibustionist_score: score.moxibustionist_score,
+          acupuncturist_passing: score.acupuncturist_passing,
+          moxibustionist_passing: score.moxibustionist_passing,
           standardScore: calculateStandardScore(score.total_score, averageScore, stdDeviation),
         }
       })
@@ -237,8 +308,10 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
       maxScore,
       minScore,
       medianScore,
-      passingCount,
-      passingRate,
+      acupuncturistPassingCount,
+      acupuncturistPassingRate,
+      moxibustionistPassingCount,
+      moxibustionistPassingRate,
       subjectAverages,
       subjectMaxScores,
       subjectMinScores,
@@ -248,7 +321,7 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
       groupComparison,
       correlationData,
     }
-  }, [testScores])
+  }, [scoresWithPassFail])
 
   // グラフ表示用の科目データ
   const subjectChartData = Object.entries(subjectLabels).map(([key, label]) => ({
@@ -292,9 +365,6 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
             <CardContent>
               <div className="flex items-center">
                 <div className="text-2xl font-bold">{analysis.averageScore.toFixed(1)}点</div>
-                <Badge className="ml-2" variant={analysis.averageScore >= passingScore ? "success" : "destructive"}>
-                  {analysis.averageScore >= passingScore ? "合格ライン" : "不合格"}
-                </Badge>
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
                 最高点: {analysis.maxScore}点 / 最低点: {analysis.minScore}点 / 中央値: {analysis.medianScore}点
@@ -311,15 +381,37 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
               <CardTitle className="text-base">合格率</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analysis.passingRate.toFixed(1)}%</div>
-              <p className="text-xs text-muted-foreground">
-                {analysis.passingCount}名/{analysis.scores.length}名
-              </p>
-              <Progress
-                className="mt-2"
-                value={analysis.passingRate}
-                indicatorColor={analysis.passingRate >= 60 ? "bg-green-500" : "bg-amber-500"}
-              />
+              <div className="space-y-2">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">はり師:</span>
+                    <span className="font-bold">{analysis.acupuncturistPassingRate.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    className="mt-1"
+                    value={analysis.acupuncturistPassingRate}
+                    indicatorColor={analysis.acupuncturistPassingRate >= 60 ? "bg-green-500" : "bg-amber-500"}
+                  />
+                  <p className="text-xs text-muted-foreground text-right">
+                    {analysis.acupuncturistPassingCount}名/{analysis.scores.length}名
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">きゅう師:</span>
+                    <span className="font-bold">{analysis.moxibustionistPassingRate.toFixed(1)}%</span>
+                  </div>
+                  <Progress
+                    className="mt-1"
+                    value={analysis.moxibustionistPassingRate}
+                    indicatorColor={analysis.moxibustionistPassingRate >= 60 ? "bg-green-500" : "bg-amber-500"}
+                  />
+                  <p className="text-xs text-muted-foreground text-right">
+                    {analysis.moxibustionistPassingCount}名/{analysis.scores.length}名
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -372,39 +464,75 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
           </Card>
         </div>
 
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>合格・不合格の割合</CardTitle>
-            <CardDescription>合格者と不合格者の比率</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full flex items-center justify-center">
-              <ResponsiveContainer width="50%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: "合格", value: analysis.passingCount },
-                      { name: "不合格", value: analysis.scores.length - analysis.passingCount },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={true}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                    nameKey="name"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
-                  >
-                    <Cell fill={PASS_COLOR} />
-                    <Cell fill={FAIL_COLOR} />
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value}名`, ""]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>はり師試験 合格状況</CardTitle>
+              <CardDescription>合格基準: 共通問題+はり理論の合計190点の60%以上（114点以上）</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] w-full flex items-center justify-center">
+                <ResponsiveContainer width="80%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "合格", value: analysis.acupuncturistPassingCount },
+                        { name: "不合格", value: analysis.scores.length - analysis.acupuncturistPassingCount },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                      nameKey="name"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                    >
+                      <Cell fill={PASS_COLOR} />
+                      <Cell fill={FAIL_COLOR} />
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value}名`, ""]} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>きゅう師試験 合格状況</CardTitle>
+              <CardDescription>合格基準: 共通問題+きゅう理論の合計190点の60%以上（114点以上）</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] w-full flex items-center justify-center">
+                <ResponsiveContainer width="80%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "合格", value: analysis.moxibustionistPassingCount },
+                        { name: "不合格", value: analysis.scores.length - analysis.moxibustionistPassingCount },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                      nameKey="name"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                    >
+                      <Cell fill={PASS_COLOR} />
+                      <Cell fill={FAIL_COLOR} />
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value}名`, ""]} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </TabsContent>
 
       <TabsContent value="subjects">
@@ -737,8 +865,8 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
                     <TableHead className="text-right">基礎医学</TableHead>
                     <TableHead className="text-right">臨床医学</TableHead>
                     <TableHead className="text-right">東洋医学</TableHead>
-                    <TableHead className="text-right">専門</TableHead>
-                    <TableHead className="text-center">判定</TableHead>
+                    <TableHead className="text-center">はり師</TableHead>
+                    <TableHead className="text-center">きゅう師</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -757,9 +885,21 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
                         <TableCell className="text-right">{score.basic_medicine_score?.toFixed(1)}</TableCell>
                         <TableCell className="text-right">{score.clinical_medicine_score?.toFixed(1)}</TableCell>
                         <TableCell className="text-right">{score.oriental_medicine_score?.toFixed(1)}</TableCell>
-                        <TableCell className="text-right">{score.specialized_score?.toFixed(1)}</TableCell>
                         <TableCell className="text-center">
-                          {score.passing ? (
+                          {score.acupuncturist_passing ? (
+                            <div className="flex items-center justify-center">
+                              <Check className="mr-1 h-4 w-4 text-green-500" />
+                              <span className="text-green-600">合格</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center">
+                              <X className="mr-1 h-4 w-4 text-red-500" />
+                              <span className="text-red-600">不合格</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {score.moxibustionist_passing ? (
                             <div className="flex items-center justify-center">
                               <Check className="mr-1 h-4 w-4 text-green-500" />
                               <span className="text-green-600">合格</span>

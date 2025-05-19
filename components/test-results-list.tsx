@@ -16,6 +16,21 @@ interface TestScore {
   test_date: string
   student_id: number
   total_score: number
+  medical_overview: number
+  public_health: number
+  related_laws: number
+  anatomy: number
+  physiology: number
+  pathology: number
+  clinical_medicine_overview: number
+  clinical_medicine_detail: number
+  rehabilitation: number
+  oriental_medicine_overview: number
+  meridian_points: number
+  oriental_medicine_clinical: number
+  oriental_medicine_clinical_general: number
+  acupuncture_theory: number
+  moxibustion_theory: number
   [key: string]: any
 }
 
@@ -25,9 +40,44 @@ interface TestResultsListProps {
   onSuccess?: () => void
 }
 
+// 科目グループ
+const subjectGroups = {
+  common: [
+    "medical_overview",
+    "public_health",
+    "related_laws",
+    "anatomy",
+    "physiology",
+    "pathology",
+    "clinical_medicine_overview",
+    "clinical_medicine_detail",
+    "rehabilitation",
+    "oriental_medicine_overview",
+    "meridian_points",
+    "oriental_medicine_clinical",
+    "oriental_medicine_clinical_general",
+  ],
+}
+
+// 共通問題の満点
+const COMMON_MAX_SCORE = 180
+
+// 合格基準（60%）
+const PASSING_PERCENTAGE = 0.6
+
+// 合格基準点
+const PASSING_SCORE = (COMMON_MAX_SCORE + 10) * PASSING_PERCENTAGE // 190点の60% = 114点
+
 export default function TestResultsList({ scores, isDashboard = false, onSuccess }: TestResultsListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const router = useRouter()
+
+  // 科目グループの合計点を計算する関数
+  const calculateGroupScore = (score: TestScore, subjects: string[]) => {
+    return subjects.reduce((total, subject) => {
+      return total + (Number(score[subject as keyof TestScore]) || 0)
+    }, 0)
+  }
 
   // テスト名と日付でグループ化したテスト結果
   const groupedTests = useMemo(() => {
@@ -38,7 +88,8 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
         test_date: string
         count: number
         avgScore: number
-        passingRate: number
+        acupuncturistPassingRate: number
+        moxibustionistPassingRate: number
       }
     >()
 
@@ -52,7 +103,8 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
           test_date: score.test_date,
           count: 0,
           avgScore: 0,
-          passingRate: 0,
+          acupuncturistPassingRate: 0,
+          moxibustionistPassingRate: 0,
         })
       }
 
@@ -62,11 +114,31 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
       // 平均点の計算用に合計を更新
       group.avgScore = (group.avgScore * (group.count - 1) + score.total_score) / group.count
 
-      // 合格者数の計算（70点以上を合格とする）
-      const isPassing = score.total_score >= 70
-      if (isPassing) {
-        group.passingRate = (((group.passingRate * (group.count - 1)) / 100 + (isPassing ? 1 : 0)) / group.count) * 100
-      }
+      // 共通問題の合計点を計算
+      const commonScore = calculateGroupScore(score, subjectGroups.common)
+
+      // はり師試験の合計点（共通問題 + はり理論）
+      const acupuncturistScore = commonScore + (score.acupuncture_theory || 0)
+
+      // きゅう師試験の合計点（共通問題 + きゅう理論）
+      const moxibustionistScore = commonScore + (score.moxibustion_theory || 0)
+
+      // はり師合格判定（共通問題 + はり理論の合計が114点以上）
+      const isAcupuncturistPassing = acupuncturistScore >= PASSING_SCORE
+
+      // きゅう師合格判定（共通問題 + きゅう理論の合計が114点以上）
+      const isMoxibustionistPassing = moxibustionistScore >= PASSING_SCORE
+
+      // 合格率の更新
+      group.acupuncturistPassingRate =
+        (((group.acupuncturistPassingRate * (group.count - 1)) / 100 + (isAcupuncturistPassing ? 1 : 0)) /
+          group.count) *
+        100
+
+      group.moxibustionistPassingRate =
+        (((group.moxibustionistPassingRate * (group.count - 1)) / 100 + (isMoxibustionistPassing ? 1 : 0)) /
+          group.count) *
+        100
     })
 
     // 日付の新しい順にソート
@@ -127,7 +199,8 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
                   <TableHead>実施日</TableHead>
                   <TableHead>受験者数</TableHead>
                   <TableHead>平均点</TableHead>
-                  <TableHead>合格率</TableHead>
+                  <TableHead>はり師合格率</TableHead>
+                  <TableHead>きゅう師合格率</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -162,8 +235,13 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={test.passingRate >= 60 ? "success" : "destructive"}>
-                        {test.passingRate.toFixed(1)}%
+                      <Badge variant={test.acupuncturistPassingRate >= 60 ? "success" : "destructive"}>
+                        {test.acupuncturistPassingRate.toFixed(1)}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={test.moxibustionistPassingRate >= 60 ? "success" : "destructive"}>
+                        {test.moxibustionistPassingRate.toFixed(1)}%
                       </Badge>
                     </TableCell>
                     <TableCell>
