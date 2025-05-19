@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { CharacterIcon } from "@/components/character-icon"
 import Link from "next/link"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, RefreshCw } from "lucide-react"
 import TestResultsImport from "@/components/test-results-import"
 import TestResultsList from "@/components/test-results-list"
 import { useToast } from "@/hooks/use-toast"
@@ -14,7 +14,9 @@ import { getTestResults } from "@/app/actions/test-results"
 
 export default function ResultsPage() {
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [testScores, setTestScores] = useState<any[]>([])
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
 
@@ -32,16 +34,22 @@ export default function ResultsPage() {
 
   const fetchTestScores = async () => {
     setIsLoading(true)
+    setError(null)
     try {
+      console.log("テスト結果を取得中...")
       const result = await getTestResults()
 
       if (result.success) {
+        console.log("テスト結果を取得しました:", result.data.length, "件")
         setTestScores(result.data)
       } else {
+        console.error("テスト結果取得エラー:", result.error)
+        setError(result.error || "テスト結果の取得に失敗しました")
         throw new Error(result.error || "テスト結果の取得に失敗しました")
       }
     } catch (error) {
       console.error("データ取得エラー:", error)
+      setError(error instanceof Error ? error.message : "テスト結果の取得に失敗しました")
       toast({
         title: "エラー",
         description: "テスト結果の取得に失敗しました",
@@ -49,7 +57,13 @@ export default function ResultsPage() {
       })
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
+  }
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    fetchTestScores()
   }
 
   if (isLoading) {
@@ -66,17 +80,28 @@ export default function ResultsPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
+        <div className="mb-6 flex justify-between items-center">
           <Button asChild variant="outline" size="sm">
             <Link href="/admin/dashboard" className="flex items-center">
               <ChevronLeft className="mr-1 h-4 w-4" />
               ダッシュボードに戻る
             </Link>
           </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center"
+          >
+            <RefreshCw className={`mr-1 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            更新
+          </Button>
         </div>
 
         <div className="space-y-6">
-          <TestResultsImport />
+          <TestResultsImport onSuccess={fetchTestScores} />
 
           <Card>
             <CardHeader>
@@ -89,7 +114,29 @@ export default function ResultsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <TestResultsList scores={testScores} />
+              {error ? (
+                <div className="text-center py-8">
+                  <p className="text-red-500 mb-4">{error}</p>
+                  <Button variant="outline" onClick={handleRefresh}>
+                    再読み込み
+                  </Button>
+                </div>
+              ) : testScores.length > 0 ? (
+                <>
+                  <p className="mb-4 text-sm text-gray-500">テスト結果: {testScores.length}件</p>
+                  <TestResultsList scores={testScores} onSuccess={fetchTestScores} />
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">テスト結果がありません</p>
+                  <p className="text-sm text-gray-400 mb-4">
+                    テスト結果をインポートするか、データベース接続を確認してください
+                  </p>
+                  <Button variant="outline" onClick={handleRefresh}>
+                    再読み込み
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

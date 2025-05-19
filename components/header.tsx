@@ -6,7 +6,7 @@ interface HeaderProps {
   subtitle?: string
 }
 
-export function Header({ title = "模擬試験確認システム", subtitle }: HeaderProps) {
+export function Header({ title = "AMT模擬試験確認システム", subtitle }: HeaderProps) {
   return (
     <header className="bg-brown-500 text-white p-4 shadow-md">
       <div className="container mx-auto flex justify-between items-center">

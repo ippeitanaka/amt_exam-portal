@@ -29,22 +29,30 @@ export default function TestsPage() {
     }
 
     setStudentId(storedStudentId)
-    fetchTests()
+    fetchTests(storedStudentId)
   }, [router])
 
-  const fetchTests = async () => {
+  const fetchTests = async (id: string) => {
     setIsLoading(true)
     try {
-      // テスト一覧を取得（重複を除く）
-      const { data, error } = await supabase
+      // 学生IDを数値に変換
+      const studentIdNum = Number.parseInt(id, 10)
+
+      if (isNaN(studentIdNum)) {
+        throw new Error("有効な学生IDではありません")
+      }
+
+      // 学生のテスト結果を取得
+      const { data: studentTests, error: studentTestsError } = await supabase
         .from("test_scores")
         .select("test_name, test_date")
+        .eq("student_id", studentIdNum)
         .order("test_date", { ascending: false })
 
-      if (error) throw error
+      if (studentTestsError) throw studentTestsError
 
       // 重複を除去
-      const uniqueTests = data?.filter(
+      const uniqueTests = studentTests?.filter(
         (test, index, self) => index === self.findIndex((t) => t.test_name === test.test_name),
       )
 
@@ -82,7 +90,7 @@ export default function TestsPage() {
             <CharacterIcon size={40} />
             <div>
               <CardTitle>テスト一覧</CardTitle>
-              <CardDescription>これまでに実施されたすべての模擬試験</CardDescription>
+              <CardDescription>あなたが受験した模擬試験の一覧</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -135,6 +143,7 @@ export default function TestsPage() {
             )}
           </CardContent>
         </Card>
+        <p className="text-brown-600 dark:text-brown-300">AMT模擬試験確認システム</p>
       </div>
     </main>
   )

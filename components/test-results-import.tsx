@@ -3,383 +3,212 @@
 import type React from "react"
 
 import { useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Loader2, FileSpreadsheet, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { ParamedicMascot } from "./paramedic-mascot"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { importTestResults } from "@/app/actions/test-results"
+import { CharacterIcon } from "./character-icon"
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from "lucide-react"
+import Papa from "papaparse"
 
 interface TestResultsImportProps {
+  onSuccess?: () => void
   onImportSuccess?: () => void
 }
 
-export default function TestResultsImport({ onImportSuccess }: TestResultsImportProps) {
-  const [isImporting, setIsImporting] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [csvPreview, setCsvPreview] = useState<string[][]>([])
+export default function TestResultsImport({ onSuccess, onImportSuccess }: TestResultsImportProps) {
+  const [file, setFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
   const { toast } = useToast()
-  const supabase = createClientComponentClient()
 
-  // CSVファイルをプレビュー表示する関数
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) {
-      setCsvPreview([])
-      return
-    }
-
-    try {
-      const text = await file.text()
-      const rows = text
-        .split("\n")
-        .filter((row) => row.trim() !== "") // 空行を削除
-        .map((row) => {
-          // 簡易的なCSV解析（より複雑なケースでは改善が必要）
-          const result = []
-          let current = ""
-          let inQuotes = false
-
-          for (let i = 0; i < row.length; i++) {
-            const char = row[i]
-
-            if (char === '"') {
-              inQuotes = !inQuotes
-            } else if (char === "," && !inQuotes) {
-              result.push(current)
-              current = ""
-            } else {
-              current += char
-            }
-          }
-
-          // 最後のフィールドを追加
-          result.push(current)
-
-          return result
-        })
-
-      setCsvPreview(rows.slice(0, 5)) // 最初の5行だけ表示
-    } catch (error) {
-      console.error("CSVプレビューエラー:", error)
-      setCsvPreview([])
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0])
+      setUploadSuccess(false)
     }
   }
 
-  const handleFileUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const fileInput = document.getElementById("csvFile") as HTMLInputElement
-    const file = fileInput.files?.[0]
-
+  const handleUpload = async () => {
     if (!file) {
-      setError("ファイルを選択してください")
-      return
-    }
-
-    setIsImporting(true)
-    setError("")
-    setSuccess("")
-
-    try {
-      const reader = new FileReader()
-
-      reader.onload = async (event) => {
-        const csvData = event.target?.result as string
-        const rows = csvData.split("\n")
-
-        // ヘッダー行を取得
-        const headers = rows[0].split(",").map((h) => h.trim())
-
-        // 必須フィールドの確認
-        const requiredFields = ["学生ID", "テスト名", "テスト日", "合計"]
-        const missingFields = requiredFields.filter((field) => !headers.includes(field))
-
-        if (missingFields.length > 0) {
-          setError(`CSVファイルに必須フィールドがありません: ${missingFields.join(", ")}`)
-          setIsImporting(false)
-          return
-        }
-
-        // データ行の処理
-        const dataRows = rows.slice(1).filter((row) => row.trim() !== "")
-        const results = []
-
-        for (const row of dataRows) {
-          const values = row.split(",").map((v) => v.trim())
-
-          // 各フィールドのインデックスを取得
-          const studentIdIndex = headers.indexOf("学生ID")
-          const studentNameIndex = headers.indexOf("氏名")
-          const testNameIndex = headers.indexOf("テスト名")
-          const testDateIndex = headers.indexOf("テスト日")
-          const generalMorningIndex = headers.indexOf("一般問題午前")
-          const generalAfternoonIndex = headers.indexOf("一般問題午後")
-          const acupuncturistIndex = headers.indexOf("鍼師問題")
-          const moxibustionIndex = headers.indexOf("灸師問題")
-          const totalScoreIndex = headers.indexOf("合計")
-
-          // 必須フィールドの値が空でないことを確認
-          if (!values[studentIdIndex] || !values[testNameIndex] || !values[testDateIndex] || !values[totalScoreIndex]) {
-            continue
-          }
-
-          // データオブジェクトを作成
-          const rowData: any = {
-            student_id: values[studentIdIndex],
-            test_name: values[testNameIndex],
-            test_date: values[testDateIndex],
-            total_score: Number.parseInt(values[totalScoreIndex]) || 0,
-          }
-
-          // オプションフィールド
-          // student_nameカラムが存在しない場合は、このフィールドをスキップ
-          // 以下のコードをコメントアウトまたは削除
-          /*
-          if (studentNameIndex >= 0 && values[studentNameIndex]) {
-            rowData.student_name = values[studentNameIndex];
-          }
-          */
-
-          if (generalMorningIndex >= 0 && values[generalMorningIndex]) {
-            rowData.general_morning = Number.parseInt(values[generalMorningIndex]) || null
-          }
-
-          if (generalAfternoonIndex >= 0 && values[generalAfternoonIndex]) {
-            rowData.general_afternoon = Number.parseInt(values[generalAfternoonIndex]) || null
-          }
-
-          if (acupuncturistIndex >= 0 && values[acupuncturistIndex]) {
-            rowData.acupuncturist = Number.parseInt(values[acupuncturistIndex]) || null
-          }
-
-          if (moxibustionIndex >= 0 && values[moxibustionIndex]) {
-            rowData.moxibustion = Number.parseInt(values[moxibustionIndex]) || null
-          }
-
-          // デフォルト値
-          rowData.max_score = 300
-
-          results.push(rowData)
-        }
-
-        if (results.length === 0) {
-          setError("有効なデータ行がありません")
-          setIsImporting(false)
-          return
-        }
-
-        try {
-          // テーブル構造を確認
-          const { data: tableInfo, error: tableError } = await supabase.from("test_scores").select("*").limit(1)
-
-          if (tableError) {
-            throw new Error(`テーブル構造の確認に失敗しました: ${tableError.message}`)
-          }
-
-          // データベースのカラム名を取得
-          const dbColumns = tableInfo && tableInfo.length > 0 ? Object.keys(tableInfo[0]) : []
-          console.log("利用可能なカラム:", dbColumns)
-
-          // 各結果をテーブル構造に合わせて整形
-          const formattedResults = results.map((result) => {
-            const formattedResult: Record<string, any> = {}
-
-            // 基本項目を追加（必須項目）
-            formattedResult.student_id = result.student_id
-            formattedResult.test_name = result.test_name
-            formattedResult.test_date = result.test_date
-            formattedResult.total_score = result.total_score
-
-            // 存在するカラムのみ追加
-            if (dbColumns.includes("student_name") && result.student_name !== undefined) {
-              formattedResult.student_name = result.student_name
-            }
-
-            if (dbColumns.includes("general_morning") && result.general_morning !== undefined) {
-              formattedResult.general_morning = result.general_morning
-            }
-
-            if (dbColumns.includes("general_afternoon") && result.general_afternoon !== undefined) {
-              formattedResult.general_afternoon = result.general_afternoon
-            }
-
-            if (dbColumns.includes("acupuncturist") && result.acupuncturist !== undefined) {
-              formattedResult.acupuncturist = result.acupuncturist
-            }
-
-            if (dbColumns.includes("moxibustion") && result.moxibustion !== undefined) {
-              formattedResult.moxibustion = result.moxibustion
-            }
-
-            if (dbColumns.includes("max_score")) {
-              formattedResult.max_score = result.max_score || 300 // デフォルト値
-            }
-
-            return formattedResult
-          })
-
-          // データをインポート
-          const { error: insertError } = await supabase.from("test_scores").insert(formattedResults)
-
-          if (insertError) {
-            throw new Error(insertError.message)
-          }
-
-          setSuccess(`${results.length}件のテスト結果をインポートしました`)
-          toast({
-            title: "インポート成功",
-            description: `${results.length}件のテスト結果をインポートしました`,
-          })
-
-          // フォームをリセット
-          fileInput.value = ""
-          setCsvPreview([])
-
-          // インポート成功時にコールバックを呼び出す
-          if (onImportSuccess) {
-            onImportSuccess()
-          }
-        } catch (error) {
-          console.error("テスト結果インポートエラー:", error)
-          setError(error instanceof Error ? error.message : "テスト結果のインポートに失敗しました")
-          toast({
-            title: "インポートエラー",
-            description: error instanceof Error ? error.message : "テスト結果のインポートに失敗しました",
-            variant: "destructive",
-          })
-        }
-      }
-
-      reader.onerror = () => {
-        setError("ファイルの読み込み中にエラーが発生しました")
-      }
-
-      reader.readAsText(file)
-    } catch (error) {
-      console.error("Import error:", error)
-      setError(error instanceof Error ? error.message : "不明なエラーが発生しました")
       toast({
-        title: "インポートエラー",
-        description: error instanceof Error ? error.message : "不明なエラーが発生しました",
+        title: "エラー",
+        description: "ファイルを選択してください",
         variant: "destructive",
       })
-    } finally {
-      setIsImporting(false)
+      return
     }
-  }
 
-  const downloadTemplate = () => {
-    const headers = [
-      "学生ID",
-      "氏名",
-      "テスト名",
-      "テスト日",
-      "一般問題午前",
-      "一般問題午後",
-      "鍼師問題",
-      "灸師問題",
-      "合計",
-    ]
+    setIsUploading(true)
+    setUploadSuccess(false)
 
-    const csvContent = headers.join(",")
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute("download", "test_scores_template.csv")
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      // CSVファイルを読み込む
+      const text = await file.text()
+
+      // CSVをパース
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            console.log("パース結果:", results.data)
+
+            // カラム名のマッピング
+            const mappedData = results.data.map((row: any) => {
+              // 日本語カラム名を英語カラム名にマッピング
+              const mappedRow: Record<string, any> = {}
+
+              // 学生情報
+              mappedRow.student_id = row["番号"] || row["学生ID"] || row["student_id"] || ""
+              mappedRow.student_name = row["氏名"] || row["学生名"] || row["student_name"] || ""
+
+              // テスト情報
+              mappedRow.test_name = row["テスト名"] || row["試験名"] || row["test_name"] || "模擬試験"
+              mappedRow.test_date =
+                row["テスト日"] || row["試験日"] || row["test_date"] || new Date().toISOString().split("T")[0]
+
+              // 科目別スコア
+              mappedRow.medical_overview = row["医療概論"] || row["medical_overview"] || 0
+              mappedRow.public_health = row["衛生・公衆衛生学"] || row["public_health"] || 0
+              mappedRow.related_laws = row["関係法規"] || row["related_laws"] || 0
+              mappedRow.anatomy = row["解剖学"] || row["anatomy"] || 0
+              mappedRow.physiology = row["生理学"] || row["physiology"] || 0
+              mappedRow.pathology = row["病理学"] || row["pathology"] || 0
+              mappedRow.clinical_medicine_overview = row["臨床医学総論"] || row["clinical_medicine_overview"] || 0
+              mappedRow.clinical_medicine_detail = row["臨床医学各論"] || row["clinical_medicine_detail"] || 0
+              mappedRow.rehabilitation = row["リハビリテーション医学"] || row["rehabilitation"] || 0
+              mappedRow.oriental_medicine_overview = row["東洋医学概論"] || row["oriental_medicine_overview"] || 0
+              mappedRow.meridian_points = row["経絡経穴概論"] || row["meridian_points"] || 0
+              mappedRow.oriental_medicine_clinical = row["東洋医学臨床論"] || row["oriental_medicine_clinical"] || 0
+              mappedRow.oriental_medicine_clinical_general =
+                row["東洋医学臨床論（総合）"] || row["oriental_medicine_clinical_general"] || 0
+              mappedRow.acupuncture_theory = row["はり理論"] || row["acupuncture_theory"] || 0
+              mappedRow.moxibustion_theory = row["きゅう理論"] || row["moxibustion_theory"] || 0
+
+              return mappedRow
+            })
+
+            console.log("マッピング後のデータ:", mappedData)
+
+            // 学生IDが空のデータを除外
+            const validData = mappedData.filter((row: any) => row.student_id)
+
+            if (validData.length === 0) {
+              throw new Error("有効なデータがありません。CSVファイルの形式を確認してください。")
+            }
+
+            // サーバーアクションを呼び出してデータをインポート
+            const response = await importTestResults(validData)
+
+            if (response.success) {
+              setUploadSuccess(true)
+              toast({
+                title: "成功",
+                description: `${response.count}件のテスト結果をインポートしました`,
+                variant: "default",
+              })
+
+              // 成功コールバックを呼び出す
+              if (onSuccess) onSuccess()
+              if (onImportSuccess) onImportSuccess()
+            } else {
+              throw new Error(response.error || "インポートに失敗しました")
+            }
+          } catch (error) {
+            console.error("インポートエラー:", error)
+            toast({
+              title: "エラー",
+              description: error instanceof Error ? error.message : "インポートに失敗しました",
+              variant: "destructive",
+            })
+          } finally {
+            setIsUploading(false)
+          }
+        },
+        error: (error) => {
+          console.error("CSVパースエラー:", error)
+          toast({
+            title: "エラー",
+            description: "CSVファイルの解析に失敗しました",
+            variant: "destructive",
+          })
+          setIsUploading(false)
+        },
+      })
+    } catch (error) {
+      console.error("ファイル読み込みエラー:", error)
+      toast({
+        title: "エラー",
+        description: "ファイルの読み込みに失敗しました",
+        variant: "destructive",
+      })
+      setIsUploading(false)
+    }
   }
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <ParamedicMascot width={40} height={40} type="acupuncturist" />
+          <CharacterIcon size={40} />
           <div>
-            <CardTitle>テスト結果インポート</CardTitle>
-            <CardDescription>CSVファイルから鍼灸師学科の模擬試験結果をインポートします</CardDescription>
+            <CardTitle>テスト結果のインポート</CardTitle>
+            <CardDescription>CSVファイルからテスト結果をインポートします</CardDescription>
           </div>
         </div>
       </CardHeader>
-      <form onSubmit={handleFileUpload}>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          {success && (
-            <Alert variant="default" className="bg-green-50 text-green-800 border-green-200">
-              <AlertDescription>{success}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="csvFile">CSVファイル</Label>
-            <Input id="csvFile" type="file" accept=".csv" onChange={handleFileChange} required />
-            <p className="text-sm text-gray-500">
-              CSVファイルは以下の列を含む必要があります: 学生ID, 氏名, テスト名, テスト日, 合計
-              <br />
-              その他の列（一般問題午前, 一般問題午後, 鍼師問題, 灸師問題）はオプションです
-            </p>
+      <CardContent>
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="csv-file">CSVファイル</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="csv-file"
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                disabled={isUploading}
+                className="flex-1"
+              />
+              <Button onClick={handleUpload} disabled={!file || isUploading}>
+                {isUploading ? (
+                  <>
+                    <FileSpreadsheet className="mr-2 h-4 w-4 animate-spin" />
+                    インポート中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    インポート
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
-          {csvPreview.length > 0 && (
-            <div className="overflow-x-auto">
-              <p className="text-sm font-medium mb-2">CSVプレビュー（最初の5行）:</p>
-              <div className="border rounded-md overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {csvPreview[0].map((header, i) => (
-                        <TableHead key={i} className="whitespace-nowrap">
-                          {header}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {csvPreview.slice(1).map((row, i) => (
-                      <TableRow key={i}>
-                        {row.map((cell, j) => (
-                          <TableCell key={j}>{cell}</TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          {uploadSuccess && (
+            <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
+              <CheckCircle className="h-4 w-4" />
+              <span>テスト結果のインポートが完了しました</span>
             </div>
           )}
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button type="submit" disabled={isImporting}>
-            {isImporting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                インポート中...
-              </>
-            ) : (
-              <>
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                インポート
-              </>
-            )}
-          </Button>
-          <Button type="button" variant="outline" onClick={downloadTemplate}>
-            <Download className="mr-2 h-4 w-4" />
-            テンプレートをダウンロード
-          </Button>
-        </CardFooter>
-      </form>
+
+          <div className="bg-amber-50 p-3 rounded border border-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-amber-800">CSVファイルの形式</h4>
+                <p className="text-sm text-amber-700 mt-1">
+                  CSVファイルには以下の列が必要です：「番号」（学生ID）、「氏名」、「医療概論」、「衛生・公衆衛生学」、「関係法規」、「解剖学」、「生理学」、「病理学」、「臨床医学総論」、「臨床医学各論」、「リハビリテーション医学」、「東洋医学概論」、「経絡経穴概論」、「東洋医学臨床論」、「東洋医学臨床論（総合）」、「はり理論」、「きゅう理論」
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
     </Card>
   )
 }

@@ -24,7 +24,7 @@ export default function HomePage() {
                 className="object-contain"
               />
             </div>
-            <h1 className="text-2xl font-bold text-brown-800 dark:text-brown-100">模擬試験確認システム</h1>
+            <h1 className="text-2xl font-bold text-brown-800 dark:text-brown-100">AMT模擬試験確認システム</h1>
             <p className="text-brown-600 dark:text-brown-300">ログインタイプを選択してください</p>
           </div>
 

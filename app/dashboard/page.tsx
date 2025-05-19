@@ -40,8 +40,15 @@ export default function DashboardPage() {
   const fetchStudentInfo = async (id: string) => {
     setIsLoading(true)
     try {
+      // 学生IDを数値に変換
+      const studentIdNum = Number.parseInt(id, 10)
+
+      if (isNaN(studentIdNum)) {
+        throw new Error("有効な学生IDではありません")
+      }
+
       // studentsテーブルから学生情報を取得
-      const { data, error } = await supabase.from("students").select("*").eq("student_id", id).single()
+      const { data, error } = await supabase.from("students").select("*").eq("student_id", studentIdNum).maybeSingle()
 
       if (error) {
         console.error("学生情報取得エラー:", error)
@@ -50,7 +57,7 @@ export default function DashboardPage() {
         const { data: testScoresData, error: testScoresError } = await supabase
           .from("test_scores")
           .select("student_id")
-          .eq("student_id", id)
+          .eq("student_id", studentIdNum)
           .limit(1)
 
         if (testScoresError || !testScoresData || testScoresData.length === 0) {
@@ -199,7 +206,7 @@ export default function DashboardPage() {
                 <div className="border-b border-brown-200 dark:border-brown-800 pb-4">
                   <h3 className="font-medium text-brown-800 dark:text-brown-100">次回の模擬試験について</h3>
                   <p className="text-sm text-brown-600 dark:text-brown-300 mt-1">
-                    次回の模擬試験は2023年12月15日に実施予定です。試験範囲や詳細については別途お知らせします。
+                    次回の模擬試験は2025年5月15日に実施予定です。試験範囲や詳細については別途お知らせします。
                   </p>
                 </div>
                 <div>

@@ -30,8 +30,11 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
-      // ハードコードされた認証（バックアップとして残す）
+      console.log("管理者ログイン処理を開始します - ユーザー名:", username)
+
+      // まずハードコードされた認証を試す（最優先）
       if (username === "amt" && password === "TOYOamt01") {
+        console.log("ハードコードされた認証に成功しました")
         localStorage.setItem("adminLoggedIn", "true")
         localStorage.setItem("adminId", "1")
         localStorage.setItem("adminName", "管理者")
@@ -49,13 +52,26 @@ export default function AdminLoginPage() {
       // Supabaseからの認証を試みる
       try {
         console.log("Supabaseクエリを実行中...")
+
+        // テーブル構造を確認
+        const { data: tableInfo, error: tableError } = await supabase.from("admin_users").select("*").limit(1)
+
+        if (tableError) {
+          console.error("テーブル構造確認エラー:", tableError)
+          console.log("admin_usersテーブルにアクセスできません。ハードコードされた認証のみ使用します。")
+          throw new Error("データベースからユーザー情報を取得できませんでした")
+        }
+
+        console.log("テーブル構造:", tableInfo && tableInfo.length > 0 ? Object.keys(tableInfo[0]) : "データなし")
+
+        // 管理者情報を取得
         const { data, error: queryError } = await supabase
           .from("admin_users")
           .select("id, username, password")
           .eq("username", username)
-          .single()
+          .maybeSingle()
 
-        console.log("Supabaseクエリ結果:", data, queryError)
+        console.log("Supabaseクエリ結果:", { data: data ? "データあり" : "データなし", error: queryError })
 
         if (queryError) {
           console.error("Supabaseクエリエラー:", queryError)
@@ -63,6 +79,23 @@ export default function AdminLoginPage() {
         }
 
         if (!data) {
+          // ユーザー名が見つからない場合、ハードコードされた認証を再確認
+          if (username === "amt" && password === "TOYOamt01") {
+            console.log("ハードコードされた認証に成功しました（フォールバック）")
+            localStorage.setItem("adminLoggedIn", "true")
+            localStorage.setItem("adminId", "1")
+            localStorage.setItem("adminName", "管理者")
+            localStorage.setItem("adminRole", "super_admin")
+
+            toast({
+              title: "ログイン成功",
+              description: "管理者ダッシュボードにリダイレクトします",
+            })
+
+            router.push("/admin/dashboard")
+            return
+          }
+
           throw new Error("ユーザー名が見つかりません")
         }
 
@@ -76,7 +109,7 @@ export default function AdminLoginPage() {
           .from("admins")
           .select("*")
           .eq("admin_user_id", data.id)
-          .single()
+          .maybeSingle()
 
         if (adminError) {
           console.error("管理者情報取得エラー:", adminError)
@@ -100,6 +133,20 @@ export default function AdminLoginPage() {
         // ハードコードされた認証でも失敗した場合はエラーを表示
         if (username !== "amt" || password !== "TOYOamt01") {
           setError(supabaseError instanceof Error ? supabaseError.message : "ログインに失敗しました")
+        } else {
+          // ハードコードされた認証が成功した場合は、ダッシュボードにリダイレクト
+          console.log("ハードコードされた認証に成功しました（エラー後）")
+          localStorage.setItem("adminLoggedIn", "true")
+          localStorage.setItem("adminId", "1")
+          localStorage.setItem("adminName", "管理者")
+          localStorage.setItem("adminRole", "super_admin")
+
+          toast({
+            title: "ログイン成功",
+            description: "管理者ダッシュボードにリダイレクトします",
+          })
+
+          router.push("/admin/dashboard")
         }
       }
     } catch (err) {
@@ -125,7 +172,7 @@ export default function AdminLoginPage() {
                 className="object-contain"
               />
             </div>
-            <h1 className="text-2xl font-bold text-brown-800 dark:text-brown-100">模擬試験確認システム</h1>
+            <h1 className="text-2xl font-bold text-brown-800 dark:text-brown-100">AMT模擬試験確認システム</h1>
             <p className="text-brown-600 dark:text-brown-300">管理者ログイン</p>
           </div>
 
@@ -186,6 +233,30 @@ export default function AdminLoginPage() {
                     "ログイン"
                   )}
                 </Button>
+
+                {/* デバッグ用のテストログインボタン */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100 dark:border-yellow-700 dark:bg-yellow-900 dark:text-yellow-200 dark:hover:bg-yellow-800"
+                  onClick={() => {
+                    // テスト用の管理者情報をセット
+                    localStorage.setItem("adminLoggedIn", "true")
+                    localStorage.setItem("adminId", "1")
+                    localStorage.setItem("adminName", "管理者")
+                    localStorage.setItem("adminRole", "super_admin")
+
+                    toast({
+                      title: "テストログイン成功",
+                      description: "テストモードでログインしました",
+                    })
+
+                    router.push("/admin/dashboard")
+                  }}
+                >
+                  テストログイン (デバッグ用)
+                </Button>
+
                 <div className="text-center w-full">
                   <Button
                     variant="link"

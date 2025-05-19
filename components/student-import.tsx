@@ -35,6 +35,9 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
 
     try {
       const text = await file.text()
+      console.log("CSVプレビュー:", text.substring(0, 100) + "...")
+
+      // CSVデータを行に分割
       const rows = text
         .split("\n")
         .filter((row) => row.trim() !== "") // 空行を削除
@@ -63,6 +66,7 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
           return result
         })
 
+      console.log(`CSVプレビュー: ${rows.length}行`)
       setCsvPreview(rows.slice(0, 5)) // 最初の5行だけ表示
     } catch (error) {
       console.error("CSVプレビューエラー:", error)
@@ -89,10 +93,15 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
 
       reader.onload = async (event) => {
         const csvData = event.target?.result as string
+        console.log("CSVデータ読み込み完了:", csvData.substring(0, 100) + "...")
+
+        // CSVデータを行に分割
         const rows = csvData.split("\n")
+        console.log(`CSVデータ: ${rows.length}行`)
 
         // ヘッダー行を取得
         const headers = rows[0].split(",").map((h) => h.trim())
+        console.log("ヘッダー:", headers)
 
         // 必須フィールドの確認
         const requiredFields = ["name", "student_id", "password"]
@@ -106,10 +115,29 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
 
         // データ行の処理
         const dataRows = rows.slice(1).filter((row) => row.trim() !== "")
+        console.log(`有効なデータ行: ${dataRows.length}行`)
         const students = []
 
         for (const row of dataRows) {
-          const values = row.split(",").map((v) => v.trim())
+          // 簡易的なCSV解析（より複雑なケースでは改善が必要）
+          const values = []
+          let current = ""
+          let inQuotes = false
+
+          for (let i = 0; i < row.length; i++) {
+            const char = row[i]
+
+            if (char === '"') {
+              inQuotes = !inQuotes
+            } else if (char === "," && !inQuotes) {
+              values.push(current)
+              current = ""
+            } else {
+              current += char
+            }
+          }
+          // 最後のフィールドを追加
+          values.push(current)
 
           // 各フィールドのインデックスを取得
           const idIndex = headers.indexOf("id")
@@ -120,27 +148,41 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
 
           // 必須フィールドの値が空でないことを確認
           if (!values[nameIndex] || !values[studentIdIndex] || !values[passwordIndex]) {
+            console.log("必須フィールドが空の行をスキップ:", values)
+            continue
+          }
+
+          // student_idを数値に変換
+          const studentIdValue = values[studentIdIndex].trim()
+          const studentId = Number.parseInt(studentIdValue, 10)
+
+          if (isNaN(studentId)) {
+            console.log(`無効な学生ID "${studentIdValue}" をスキップします`)
             continue
           }
 
           // データオブジェクトを作成
           const studentData: any = {
-            name: values[nameIndex],
-            student_id: values[studentIdIndex],
-            password: values[passwordIndex],
+            name: values[nameIndex].trim(),
+            student_id: studentId,
+            password: values[passwordIndex].trim(),
           }
 
           // オプションフィールド
-          if (idIndex >= 0 && values[idIndex]) {
-            studentData.id = values[idIndex]
+          if (idIndex >= 0 && values[idIndex] && values[idIndex].trim() !== "") {
+            const idValue = Number.parseInt(values[idIndex].trim(), 10)
+            if (!isNaN(idValue)) {
+              studentData.id = idValue
+            }
           }
 
-          if (createdAtIndex >= 0 && values[createdAtIndex]) {
-            studentData.created_at = values[createdAtIndex]
+          if (createdAtIndex >= 0 && values[createdAtIndex] && values[createdAtIndex].trim() !== "") {
+            studentData.created_at = values[createdAtIndex].trim()
           } else {
             studentData.created_at = new Date().toISOString()
           }
 
+          console.log("学生データを追加:", studentData)
           students.push(studentData)
         }
 
@@ -149,6 +191,8 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
           setIsImporting(false)
           return
         }
+
+        console.log(`インポート準備完了: ${students.length}件の学生データ`)
 
         try {
           // サーバーアクションを使用して学生データをインポート
@@ -171,6 +215,7 @@ export default function StudentImport({ onImportSuccess }: StudentImportProps) {
             fileInput.value = ""
             setCsvPreview([])
           } else {
+            console.error("インポートエラー:", result.error)
             setError(result.error || "インポートに失敗しました")
             toast({
               title: "インポートエラー",

@@ -9,7 +9,7 @@ import Link from "next/link"
 import TestResultsImport from "@/components/test-results-import"
 import TestResultsList from "@/components/test-results-list"
 import { useToast } from "@/hooks/use-toast"
-import { Users, FileSpreadsheet, BarChart, LogOut, AlertCircle, RefreshCw } from "lucide-react"
+import { Users, FileSpreadsheet, BarChart, LogOut, AlertCircle, RefreshCw, Bug } from "lucide-react"
 import { Header } from "@/components/header"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getDashboardData } from "@/app/actions/dashboard" // サーバーアクションをインポート
@@ -17,7 +17,7 @@ import { getDashboardData } from "@/app/actions/dashboard" // サーバーアク
 export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [adminName, setAdminName] = useState("")
-  const [testScores, setTestScores] = useState<any[]>([])
+  const [testResults, setTestResults] = useState<any[]>([])
   const [studentCount, setStudentCount] = useState<number | null>(null)
   const [testCount, setTestCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -50,14 +50,16 @@ export default function AdminDashboardPage() {
       const result = await getDashboardData()
 
       if (result.success) {
-        // テスト結果を設定
-        setTestScores(result.testScores)
+        // データを設定
+        setTestResults(result.data.testResults || [])
+        setStudentCount(result.data.studentCount || 0)
+        setTestCount(result.data.testCount || 0)
 
-        // 学生数を設定
-        setStudentCount(result.studentCount)
-
-        // テスト数を設定
-        setTestCount(result.testCount)
+        console.log("ダッシュボードデータを取得しました:", {
+          testResults: result.data.testResults.length,
+          studentCount: result.data.studentCount,
+          testCount: result.data.testCount,
+        })
       } else {
         console.error("データ取得エラー:", result.error)
         setError(result.error || "データの取得に失敗しました")
@@ -111,24 +113,38 @@ export default function AdminDashboardPage() {
       <main className="flex-1 p-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between mb-6">
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="border-brown-300 text-brown-700 hover:bg-brown-100 dark:border-brown-700 dark:text-brown-200 dark:hover:bg-brown-800"
-            >
-              {isRefreshing ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  更新中...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  データを更新
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="border-brown-300 text-brown-700 hover:bg-brown-100 dark:border-brown-700 dark:text-brown-200 dark:hover:bg-brown-800"
+              >
+                {isRefreshing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    更新中...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    データを更新
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                asChild
+                className="border-brown-300 text-brown-700 hover:bg-brown-100 dark:border-brown-700 dark:text-brown-200 dark:hover:bg-brown-800"
+              >
+                <Link href="/admin/debug/data">
+                  <Bug className="mr-2 h-4 w-4" />
+                  データデバッグ
+                </Link>
+              </Button>
+            </div>
+
             <Button
               variant="outline"
               onClick={handleLogout}
@@ -160,7 +176,7 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent className="bg-white dark:bg-brown-900">
-                <p className="text-3xl font-bold text-brown-800 dark:text-brown-100">{testScores.length}</p>
+                <p className="text-3xl font-bold text-brown-800 dark:text-brown-100">{testResults.length}</p>
               </CardContent>
               <CardFooter className="bg-white dark:bg-brown-900 rounded-b-lg">
                 <Button
@@ -251,8 +267,8 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent className="bg-white dark:bg-brown-900">
-                {testScores.length > 0 ? (
-                  <TestResultsList scores={testScores} />
+                {testResults.length > 0 ? (
+                  <TestResultsList scores={testResults} isDashboard={true} />
                 ) : (
                   <div className="text-center py-8">
                     <p className="text-brown-600 dark:text-brown-300">テスト結果がありません</p>
