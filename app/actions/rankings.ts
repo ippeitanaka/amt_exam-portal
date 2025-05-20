@@ -346,77 +346,52 @@ export async function calculateStudentLevel(studentId: string | number) {
 
     if (studentError) {
       console.error("学生テスト結果取得エラー:", studentError)
-      return { success: false, error: studentError.message, level: 1, experience: 0, nextLevel: 100 }
+      return { success: false, error: studentError.message }
     }
 
     if (!studentTests || studentTests.length === 0) {
       console.log(`学生ID ${studentId} のテスト結果が見つかりませんでした`)
-      return { success: false, error: "テスト結果が見つかりませんでした", level: 1, experience: 0, nextLevel: 100 }
+      return { success: false, error: "テスト結果が見つかりませんでした" }
     }
 
-    // テスト結果からレベルと経験値を計算
-    let totalExperience = 0
+    // 経験値の計算
+    let experience = 0
 
-    // 各テストの結果から経験値を計算
-    studentTests.forEach((test) => {
+    // テスト受験ごとに経験値を加算
+    experience += studentTests.length * 10
+
+    // 合格点を獲得したテストごとに追加経験値
+    const passingTests = studentTests.filter((test) => {
       const totalScore = test.total_score !== undefined ? test.total_score : calculateTotalScore(test)
-
-      // 基本経験値: スコアの2倍
-      let testExperience = totalScore * 2
-
-      // ボーナス: 合格ライン(114点)以上で追加経験値
-      if (totalScore >= 114) {
-        testExperience += 100
-      }
-
-      // ボーナス: 高得点(140点以上)で追加経験値
-      if (totalScore >= 140) {
-        testExperience += 200
-      }
-
-      totalExperience += testExperience
+      return totalScore >= 114 // 合格ライン
     })
+    experience += passingTests.length * 20
 
-    // レベル計算のロジック
-    // レベル1: 0-100, レベル2: 101-300, レベル3: 301-600, レベル4: 601-1000, レベル5: 1001-1500, ...
-    let level = 1
-    let experienceForNextLevel = 100
-    let currentLevelExperience = 0
+    // 高得点（80%以上）のテストごとに追加経験値
+    const highScoreTests = studentTests.filter((test) => {
+      const totalScore = test.total_score !== undefined ? test.total_score : calculateTotalScore(test)
+      return totalScore >= 152 // 80%ライン（190点満点の80%）
+    })
+    experience += highScoreTests.length * 30
 
-    const levelThresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500, 6600, 7800, 9100, 10500, 12000]
-
-    for (let i = 1; i < levelThresholds.length; i++) {
-      if (totalExperience >= levelThresholds[i - 1] && totalExperience < levelThresholds[i]) {
-        level = i
-        currentLevelExperience = totalExperience - levelThresholds[i - 1]
-        experienceForNextLevel = levelThresholds[i] - levelThresholds[i - 1]
-        break
-      }
-    }
-
-    // レベル上限を超えた場合
-    if (totalExperience >= levelThresholds[levelThresholds.length - 1]) {
-      level = levelThresholds.length
-      currentLevelExperience = totalExperience - levelThresholds[levelThresholds.length - 1]
-      experienceForNextLevel = 1500 // 最大レベル以降の必要経験値
-    }
+    // レベルの計算（経験値100ごとにレベルアップ）
+    const level = Math.floor(experience / 100) + 1
+    const nextLevelExp = level * 100
+    const progress = ((experience % 100) / 100) * 100 // パーセンテージに変換
 
     return {
       success: true,
       level,
-      experience: currentLevelExperience,
-      nextLevel: experienceForNextLevel,
-      totalExperience,
-      testsTaken: studentTests.length,
+      experience,
+      nextLevel: nextLevelExp,
+      progress,
+      remainingExp: nextLevelExp - experience,
     }
   } catch (error) {
     console.error("レベル計算エラー:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "レベルの計算に失敗しました",
-      level: 1,
-      experience: 0,
-      nextLevel: 100,
     }
   }
 }
