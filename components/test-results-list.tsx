@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
-import { ChevronRight, Search, Users, CalendarDays, Award } from "lucide-react"
+import { ChevronRight, Search, Users, CalendarDays, Award, AlertCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 interface TestScore {
@@ -38,6 +38,7 @@ interface TestResultsListProps {
   scores: TestScore[]
   isDashboard?: boolean
   onSuccess?: () => void
+  error?: string | null
 }
 
 // 科目グループ
@@ -68,9 +69,35 @@ const PASSING_PERCENTAGE = 0.6
 // 合格基準点
 const PASSING_SCORE = (COMMON_MAX_SCORE + 10) * PASSING_PERCENTAGE // 190点の60% = 114点
 
-export default function TestResultsList({ scores, isDashboard = false, onSuccess }: TestResultsListProps) {
+// 重複を排除する関数（同じテスト名と日付の組み合わせのみ）
+function removeDuplicateTests(tests: any[]) {
+  const uniqueTests = new Map<string, any>()
+
+  tests.forEach((test) => {
+    const key = `${test.test_name}_${test.test_date}`
+    if (!uniqueTests.has(key)) {
+      uniqueTests.set(key, test)
+    }
+  })
+
+  return Array.from(uniqueTests.values())
+}
+
+export default function TestResultsList({ scores, isDashboard = false, onSuccess, error }: TestResultsListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const router = useRouter()
+
+  // 重複を排除したスコア（IDのみで重複を判断）
+  const uniqueScores = useMemo(() => {
+    // IDをキーとして使用して重複を排除
+    const uniqueMap = new Map()
+    scores.forEach((score) => {
+      if (!uniqueMap.has(score.id)) {
+        uniqueMap.set(score.id, score)
+      }
+    })
+    return Array.from(uniqueMap.values())
+  }, [scores])
 
   // 科目グループの合計点を計算する関数
   const calculateGroupScore = (score: TestScore, subjects: string[]) => {
@@ -94,7 +121,7 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
     >()
 
     // 各スコアに対して処理
-    scores.forEach((score) => {
+    uniqueScores.forEach((score) => {
       const key = `${score.test_name}_${score.test_date}`
 
       if (!grouped.has(key)) {
@@ -145,7 +172,7 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
     return Array.from(grouped.values()).sort(
       (a, b) => new Date(b.test_date).getTime() - new Date(a.test_date).getTime(),
     )
-  }, [scores])
+  }, [uniqueScores])
 
   // 検索フィルター
   const filteredTests = useMemo(() => {
@@ -188,6 +215,15 @@ export default function TestResultsList({ scores, isDashboard = false, onSuccess
         </div>
       </CardHeader>
       <CardContent>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+            <div className="flex items-start">
+              <AlertCircle className="h-5 w-5 text-red-600 mr-2 mt-0.5" />
+              <p className="text-red-800">{error}</p>
+            </div>
+          </div>
+        )}
+
         {filteredTests.length === 0 ? (
           <p className="py-4 text-center text-muted-foreground">テスト結果が見つかりませんでした</p>
         ) : (

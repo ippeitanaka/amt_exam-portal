@@ -159,47 +159,45 @@ export function TestResultsDetail({ testScores }: TestResultsDetailProps) {
   }
 
   // 各学生の合計点を計算し、合格判定を追加
-  const scoresWithPassFail = useMemo(
-    () =>
-      testScores.map((score) => {
-        // 各科目グループの合計点を計算
-        const basicMedicineScore = calculateGroupScore(score, subjectGroups.basic)
-        const clinicalMedicineScore = calculateGroupScore(score, subjectGroups.clinical)
-        const orientalMedicineScore = calculateGroupScore(score, subjectGroups.oriental)
-        const specializedScore = calculateGroupScore(score, subjectGroups.specialized)
+  const scoresWithPassFail = useMemo(() => {
+    return testScores.map((score) => {
+      // 各科目グループの合計点を計算
+      const basicMedicineScore = calculateGroupScore(score, subjectGroups.basic)
+      const clinicalMedicineScore = calculateGroupScore(score, subjectGroups.clinical)
+      const orientalMedicineScore = calculateGroupScore(score, subjectGroups.oriental)
+      const specializedScore = calculateGroupScore(score, subjectGroups.specialized)
 
-        // 共通問題の合計点を計算
-        const commonScore = calculateGroupScore(score, subjectGroups.common)
+      // 共通問題の合計点を計算
+      const commonScore = calculateGroupScore(score, subjectGroups.common)
 
-        // はり師試験の合計点（共通問題 + はり理論）
-        const acupuncturistScore = commonScore + (score.acupuncture_theory || 0)
+      // はり師試験の合計点（共通問題 + はり理論）
+      const acupuncturistScore = commonScore + (score.acupuncture_theory || 0)
 
-        // きゅう師試験の合計点（共通問題 + きゅう理論）
-        const moxibustionistScore = commonScore + (score.moxibustion_theory || 0)
+      // きゅう師試験の合計点（共通問題 + きゅう理論）
+      const moxibustionistScore = commonScore + (score.moxibustion_theory || 0)
 
-        // はり師合格判定（共通問題 + はり理論の合計が114点以上）
-        const isAcupuncturistPassing = acupuncturistScore >= PASSING_SCORE
+      // はり師合格判定（共通問題 + はり理論の合計が114点以上）
+      const isAcupuncturistPassing = acupuncturistScore >= PASSING_SCORE
 
-        // きゅう師合格判定（共通問題 + きゅう理論の合計が114点以上）
-        const isMoxibustionistPassing = moxibustionistScore >= PASSING_SCORE
+      // きゅう師合格判定（共通問題 + きゅう理論の合計が114点以上）
+      const isMoxibustionistPassing = moxibustionistScore >= PASSING_SCORE
 
-        return {
-          ...score,
-          basic_medicine_score: basicMedicineScore,
-          clinical_medicine_score: clinicalMedicineScore,
-          oriental_medicine_score: orientalMedicineScore,
-          specialized_score: specializedScore,
-          common_score: commonScore,
-          acupuncturist_score: acupuncturistScore,
-          moxibustionist_score: moxibustionistScore,
-          acupuncturist_passing: isAcupuncturistPassing,
-          moxibustionist_passing: isMoxibustionistPassing,
-          // 両方合格の場合のみ合格とする
-          passing: isAcupuncturistPassing && isMoxibustionistPassing,
-        }
-      }),
-    [testScores],
-  )
+      return {
+        ...score,
+        basic_medicine_score: basicMedicineScore,
+        clinical_medicine_score: clinicalMedicineScore,
+        oriental_medicine_score: orientalMedicineScore,
+        specialized_score: specializedScore,
+        common_score: commonScore,
+        acupuncturist_score: acupuncturistScore,
+        moxibustionist_score: moxibustionistScore,
+        acupuncturist_passing: isAcupuncturistPassing,
+        moxibustionist_passing: isMoxibustionistPassing,
+        // 両方合格の場合のみ合格とする
+        passing: isAcupuncturistPassing && isMoxibustionistPassing,
+      }
+    })
+  }, [testScores])
 
   // 分析データを計算
   const analysis = useMemo(() => {

@@ -15,6 +15,32 @@ const adminSupabase = supabaseServiceRoleKey
 // 通常のクライアント
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// 重複を排除する関数（同じ学生IDでも異なるテスト名・日付のデータは保持）
+function removeDuplicates(data: any[]) {
+  // id, test_name, test_dateの組み合わせをキーとして使用して重複を排除
+  const uniqueMap = new Map()
+  data.forEach((item) => {
+    const key = `${item.id}`
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, item)
+    }
+  })
+  return Array.from(uniqueMap.values())
+}
+
+// 同じ学生の同じテスト・同じ日付の重複のみを排除する関数
+function removeTestDuplicates(data: any[]) {
+  // student_id, test_name, test_dateの組み合わせをキーとして使用して重複を排除
+  const uniqueMap = new Map()
+  data.forEach((item) => {
+    const key = `${item.student_id}_${item.test_name}_${item.test_date}`
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, item)
+    }
+  })
+  return Array.from(uniqueMap.values())
+}
+
 export async function getTestResults() {
   try {
     console.log("テスト結果取得を開始します")
@@ -33,8 +59,13 @@ export async function getTestResults() {
       return { success: false, error: result.error.message, data: [] }
     }
 
+    // 重複を排除（IDのみで重複を判断）
+    const uniqueData = removeDuplicates(result.data || [])
+
     console.log("テスト結果を取得しました:", result.data?.length || 0, "件")
-    return { success: true, data: result.data || [] }
+    console.log("重複排除後:", uniqueData.length, "件")
+
+    return { success: true, data: uniqueData }
   } catch (error) {
     console.error("テスト結果取得エラー:", error)
     return {
@@ -45,244 +76,171 @@ export async function getTestResults() {
   }
 }
 
-export async function importTestResults(results: any[]) {
-  try {
-    if (!results || results.length === 0) {
-      return { success: false, error: "インポートするデータがありません" }
-    }
-
-    console.log("テスト結果をインポートします:", results.length, "件")
-    console.log("最初のデータ例:", results[0])
-
-    // テーブル構造を確認
-    // まず通常のクライアントで試す
-    let tableInfoResult = await supabase.from("test_scores").select("*").limit(1)
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (tableInfoResult.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      tableInfoResult = await adminSupabase.from("test_scores").select("*").limit(1)
-    }
-
-    if (tableInfoResult.error) {
-      console.error("テーブル構造確認エラー:", tableInfoResult.error)
-      return { success: false, error: `テーブル構造の確認に失敗しました: ${tableInfoResult.error.message}` }
-    }
-
-    // データベースのカラム名を取得
-    const dbColumns =
-      tableInfoResult.data && tableInfoResult.data.length > 0 ? Object.keys(tableInfoResult.data[0]) : []
-    console.log("利用可能なカラム:", dbColumns)
-
-    // 各結果をテーブル構造に合わせて整形
-    const formattedResults = results.map((result) => {
-      // student_idが数値であることを確認
-      const studentId =
-        typeof result.student_id === "number"
-          ? result.student_id
-          : Number.parseInt(String(result.student_id).trim(), 10)
-
-      if (isNaN(studentId)) {
-        console.error(`無効な学生ID: ${result.student_id}`)
-        return null
-      }
-
-      const formattedResult: Record<string, any> = {
-        student_id: studentId,
-        test_name: result.test_name || "模擬試験",
-        test_date: result.test_date || new Date().toISOString().split("T")[0],
-      }
-
-      // 科目別得点を追加
-      if (result.medical_overview !== undefined) formattedResult.medical_overview = result.medical_overview
-      if (result.public_health !== undefined) formattedResult.public_health = result.public_health
-      if (result.related_laws !== undefined) formattedResult.related_laws = result.related_laws
-      if (result.anatomy !== undefined) formattedResult.anatomy = result.anatomy
-      if (result.physiology !== undefined) formattedResult.physiology = result.physiology
-      if (result.pathology !== undefined) formattedResult.pathology = result.pathology
-      if (result.clinical_medicine_overview !== undefined)
-        formattedResult.clinical_medicine_overview = result.clinical_medicine_overview
-      if (result.clinical_medicine_detail !== undefined)
-        formattedResult.clinical_medicine_detail = result.clinical_medicine_detail
-      if (result.rehabilitation !== undefined) formattedResult.rehabilitation = result.rehabilitation
-      if (result.oriental_medicine_overview !== undefined)
-        formattedResult.oriental_medicine_overview = result.oriental_medicine_overview
-      if (result.meridian_points !== undefined) formattedResult.meridian_points = result.meridian_points
-      if (result.oriental_medicine_clinical !== undefined)
-        formattedResult.oriental_medicine_clinical = result.oriental_medicine_clinical
-      if (result.oriental_medicine_clinical_general !== undefined)
-        formattedResult.oriental_medicine_clinical_general = result.oriental_medicine_clinical_general
-      if (result.acupuncture_theory !== undefined) formattedResult.acupuncture_theory = result.acupuncture_theory
-      if (result.moxibustion_theory !== undefined) formattedResult.moxibustion_theory = result.moxibustion_theory
-
-      return formattedResult
-    })
-
-    // nullを除外
-    const validResults = formattedResults.filter((result) => result !== null)
-
-    if (validResults.length === 0) {
-      return { success: false, error: "有効なデータがありません" }
-    }
-
-    // データをインポート
-    // まず通常のクライアントで試す
-    let insertResult = await supabase.from("test_scores").insert(validResults)
-
-    // エラーがあり、かつadminSupabaseが通常のクライアントと異なる場合は管理者クライアントで再試行
-    if (insertResult.error && supabaseServiceRoleKey) {
-      console.log("通常クライアントでエラー発生、管理者クライアントで再試行します")
-      insertResult = await adminSupabase.from("test_scores").insert(validResults)
-    }
-
-    if (insertResult.error) {
-      console.error("テスト結果インポートエラー:", insertResult.error)
-      return { success: false, error: insertResult.error.message }
-    }
-
-    console.log("テスト結果のインポートが完了しました:", validResults.length, "件")
-    return { success: true, count: validResults.length }
-  } catch (error) {
-    console.error("テスト結果インポートエラー:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "テスト結果のインポートに失敗しました",
-    }
-  }
-}
-
-// 新しいCSV形式からデータをインポートする関数
-export async function importTestScoresFromCSV(csvData: any[]) {
-  try {
-    if (!csvData || csvData.length === 0) {
-      return { success: false, error: "インポートするデータがありません" }
-    }
-
-    console.log("CSVからテスト結果をインポートします:", csvData.length, "件")
-    console.log("最初のデータ例:", csvData[0])
-
-    // 各行をtest_scores形式に変換
-    const testScores = csvData.map((row) => {
-      // 学生IDを数値に変換
-      const studentId = Number.parseInt(String(row["番号"]).trim(), 10)
-      if (isNaN(studentId)) {
-        console.error(`無効な学生ID: ${row["番号"]}`)
-        return null
-      }
-
-      // 各科目の点数を数値に変換
-      const convertToNumber = (value: string | null | undefined) => {
-        if (value === null || value === undefined || value === "") return null
-        const num = Number.parseFloat(String(value).trim())
-        return isNaN(num) ? null : num
-      }
-
-      return {
-        student_id: studentId,
-        test_name: "AMT模擬試験",
-        test_date: new Date().toISOString().split("T")[0], // 今日の日付
-
-        // 基礎医学系
-        medical_overview: convertToNumber(row["医療概論"]),
-        public_health: convertToNumber(row["衛生・公衆衛生学"]),
-        related_laws: convertToNumber(row["関係法規"]),
-        anatomy: convertToNumber(row["解剖学"]),
-        physiology: convertToNumber(row["生理学"]),
-        pathology: convertToNumber(row["病理学"]),
-
-        // 臨床医学系
-        clinical_medicine_overview: convertToNumber(row["臨床医学総論"]),
-        clinical_medicine_detail: convertToNumber(row["臨床医学各論"]),
-        rehabilitation: convertToNumber(row["リハビリテーション医学"]),
-
-        // 東洋医学系
-        oriental_medicine_overview: convertToNumber(row["東洋医学概論"]),
-        meridian_points: convertToNumber(row["経絡経穴概論"]),
-        oriental_medicine_clinical: convertToNumber(row["東洋医学臨床論"]),
-        oriental_medicine_clinical_general: convertToNumber(row["東洋医学臨床論（総合）"]),
-
-        // 専門系
-        acupuncture_theory: convertToNumber(row["はり理論"]),
-        moxibustion_theory: convertToNumber(row["きゅう理論"]),
-      }
-    })
-
-    // nullを除外
-    const validTestScores = testScores.filter((score) => score !== null)
-
-    if (validTestScores.length === 0) {
-      return { success: false, error: "有効なデータがありません" }
-    }
-
-    // 学生情報も同時に更新（存在しない場合は作成）
-    for (const score of validTestScores) {
-      const studentName = csvData.find((row) => Number.parseInt(String(row["番号"]).trim(), 10) === score.student_id)?.[
-        "氏名"
-      ]
-      if (studentName) {
-        // 学生情報を確認
-        const { data: existingStudent } = await adminSupabase
-          .from("students")
-          .select("*")
-          .eq("student_id", score.student_id)
-          .maybeSingle()
-
-        if (!existingStudent) {
-          // 学生情報が存在しない場合は作成
-          const defaultPassword = String(score.student_id).slice(-4) // 学生IDの下4桁をパスワードとして使用
-          await adminSupabase.from("students").insert({
-            student_id: score.student_id,
-            name: studentName,
-            password: defaultPassword || "password",
-          })
-        }
-      }
-    }
-
-    // データをインポート
-    const insertResult = await adminSupabase.from("test_scores").insert(validTestScores)
-
-    if (insertResult.error) {
-      console.error("テスト結果インポートエラー:", insertResult.error)
-      return { success: false, error: insertResult.error.message }
-    }
-
-    console.log("テスト結果のインポートが完了しました:", validTestScores.length, "件")
-    return { success: true, count: validTestScores.length }
-  } catch (error) {
-    console.error("テスト結果インポートエラー:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "テスト結果のインポートに失敗しました",
-    }
-  }
-}
-
 // 特定の学生のテスト結果を取得する関数
-export async function getStudentTestResults(studentId: number) {
+export async function getStudentTestResults(studentId: string | number) {
   try {
     console.log(`学生ID ${studentId} のテスト結果取得を開始します`)
 
-    // 学生IDを数値に変換
-    const studentIdNum = Number.parseInt(String(studentId), 10)
-    if (isNaN(studentIdNum)) {
-      return { success: false, error: "無効な学生IDです", data: [] }
-    }
+    // 学生IDを文字列に変換
+    const studentIdStr = String(studentId).trim()
 
-    // テスト結果を取得
-    const result = await supabase
+    // 数値に変換可能か確認
+    const studentIdNum = Number.parseInt(studentIdStr, 10)
+    const isNumeric = !isNaN(studentIdNum)
+
+    console.log(`検索条件: 文字列=${studentIdStr}, 数値=${isNumeric ? studentIdNum : "変換不可"}`)
+
+    // 複数の方法を試みる
+    let data = null
+    let error = null
+
+    // 方法1: 文字列として検索
+    console.log("方法1: 文字列として検索")
+    const stringResult = await adminSupabase
       .from("test_scores")
       .select("*")
-      .eq("student_id", studentIdNum)
+      .eq("student_id", studentIdStr)
       .order("test_date", { ascending: false })
 
-    if (result.error) {
-      console.error("テスト結果取得エラー:", result.error)
-      return { success: false, error: result.error.message, data: [] }
+    if (stringResult.error) {
+      console.error("文字列検索エラー:", stringResult.error)
+      error = stringResult.error
+    } else if (stringResult.data && stringResult.data.length > 0) {
+      console.log(`文字列検索で ${stringResult.data.length} 件のデータが見つかりました`)
+      data = stringResult.data
+    } else {
+      console.log("文字列検索ではデータが見つかりませんでした")
     }
 
-    console.log(`学生ID ${studentId} のテスト結果を取得しました:`, result.data?.length || 0, "件")
-    return { success: true, data: result.data || [] }
+    // 方法2: 数値として検索（数値変換可能な場合のみ）
+    if (!data && isNumeric) {
+      console.log("方法2: 数値として検索")
+      const numericResult = await adminSupabase
+        .from("test_scores")
+        .select("*")
+        .eq("student_id", studentIdNum)
+        .order("test_date", { ascending: false })
+
+      if (numericResult.error) {
+        console.error("数値検索エラー:", numericResult.error)
+        if (!error) error = numericResult.error
+      } else if (numericResult.data && numericResult.data.length > 0) {
+        console.log(`数値検索で ${numericResult.data.length} 件のデータが見つかりました`)
+        data = numericResult.data
+      } else {
+        console.log("数値検索ではデータが見つかりませんでした")
+      }
+    }
+
+    // 方法3: OR条件で検索
+    if (!data) {
+      console.log("方法3: OR条件で検索")
+      const orQuery = isNumeric
+        ? `student_id.eq.${studentIdStr},student_id.eq.${studentIdNum}`
+        : `student_id.eq.${studentIdStr}`
+
+      const orResult = await adminSupabase
+        .from("test_scores")
+        .select("*")
+        .or(orQuery)
+        .order("test_date", { ascending: false })
+
+      if (orResult.error) {
+        console.error("OR条件検索エラー:", orResult.error)
+        if (!error) error = orResult.error
+      } else if (orResult.data && orResult.data.length > 0) {
+        console.log(`OR条件検索で ${orResult.data.length} 件のデータが見つかりました`)
+        data = orResult.data
+      } else {
+        console.log("OR条件検索ではデータが見つかりませんでした")
+      }
+    }
+
+    // 方法4: 全件取得してフィルタリング
+    if (!data) {
+      console.log("方法4: 全件取得してフィルタリング")
+      const allResult = await adminSupabase
+        .from("test_scores")
+        .select("*")
+        .limit(500)
+        .order("test_date", { ascending: false })
+
+      if (allResult.error) {
+        console.error("全件取得エラー:", allResult.error)
+        if (!error) error = allResult.error
+      } else if (allResult.data && allResult.data.length > 0) {
+        console.log(`全件取得で ${allResult.data.length} 件のデータを取得しました`)
+
+        // 文字列比較でフィルタリング
+        const filteredData = allResult.data.filter((item) => {
+          const itemStudentId = String(item.student_id).trim()
+          return itemStudentId === studentIdStr
+        })
+
+        if (filteredData.length > 0) {
+          console.log(`フィルタリングで ${filteredData.length} 件のデータが見つかりました`)
+          data = filteredData
+        } else {
+          console.log("フィルタリングではデータが見つかりませんでした")
+
+          // デバッグ情報
+          const sampleData = allResult.data.slice(0, 3)
+          console.log("サンプルデータ:", sampleData)
+          console.log(
+            "サンプルデータの学生ID型:",
+            sampleData.map((item) => typeof item.student_id),
+          )
+          console.log("検索対象の学生ID:", studentIdStr)
+        }
+      } else {
+        console.log("全件取得ではデータが見つかりませんでした")
+      }
+    }
+
+    // 結果を返す前に同じテスト・同じ日付の重複のみを排除
+    if (data && data.length > 0) {
+      // 同じテスト・同じ日付の重複のみを排除
+      const uniqueData = removeTestDuplicates(data)
+
+      console.log(`学生ID ${studentId} のテスト結果を ${data.length} 件取得しました`)
+      console.log(`重複排除後: ${uniqueData.length} 件`)
+
+      return { success: true, data: uniqueData }
+    } else {
+      console.log(`学生ID ${studentId} のテスト結果が見つかりませんでした`)
+
+      // デバッグ用のAPIエンドポイントを呼び出す
+      try {
+        const debugResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/debug-query?studentId=${encodeURIComponent(studentIdStr)}`,
+        )
+        const debugData = await debugResponse.json()
+
+        console.log("デバッグクエリ結果:", {
+          success: debugData.success,
+          resultCount: debugData.resultCount,
+          queryInfo: debugData.queryInfo,
+        })
+
+        if (debugData.success && debugData.results && debugData.results.length > 0) {
+          // 同じテスト・同じ日付の重複のみを排除
+          const uniqueDebugData = removeTestDuplicates(debugData.results)
+
+          console.log(`デバッグクエリで ${debugData.results.length} 件のデータが見つかりました`)
+          console.log(`重複排除後: ${uniqueDebugData.length} 件`)
+
+          return { success: true, data: uniqueDebugData, debugSource: true }
+        }
+      } catch (debugError) {
+        console.error("デバッグクエリエラー:", debugError)
+      }
+
+      return {
+        success: false,
+        error: error ? error.message : "テスト結果が見つかりませんでした",
+        data: [],
+      }
+    }
   } catch (error) {
     console.error("テスト結果取得エラー:", error)
     return {

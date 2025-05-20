@@ -2,137 +2,229 @@
 
 import { createClient } from "@supabase/supabase-js"
 
-// サーバーサイドでSupabaseクライアントを作成
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+// Supabaseクライアントを作成する関数
+function createSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
-// 管理者用のクライアント（サービスロールキーを使用）
-const adminSupabase = supabaseServiceRoleKey
-  ? createClient(supabaseUrl, supabaseServiceRoleKey)
-  : createClient(supabaseUrl, supabaseAnonKey)
-
-// 通常のクライアント
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-export async function checkDatabaseConnection() {
-  try {
-    console.log("データベース接続テストを開始します")
-    console.log("SUPABASE_URL:", supabaseUrl ? "設定されています" : "未設定")
-    console.log("SUPABASE_ANON_KEY:", supabaseAnonKey ? "設定されています" : "未設定")
-    console.log("SERVICE_ROLE_KEY:", supabaseServiceRoleKey ? "設定されています" : "未設定")
-
-    // 通常のクライアントでテスト
-    const normalResult = await supabase.from("students").select("count").limit(1)
-
-    // 管理者クライアントでテスト
-    const adminResult = await adminSupabase.from("students").select("count").limit(1)
-
-    // テーブル一覧を取得
-    const { data: tableList, error: tableListError } = await adminSupabase.rpc("get_tables")
-
-    return {
-      success: true,
-      normalClient: {
-        error: normalResult.error ? normalResult.error.message : null,
-        data: normalResult.data,
-      },
-      adminClient: {
-        error: adminResult.error ? adminResult.error.message : null,
-        data: adminResult.data,
-      },
-      tables: tableList || [],
-      tablesError: tableListError ? tableListError.message : null,
-    }
-  } catch (error) {
-    console.error("データベース接続テストエラー:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "データベース接続テストに失敗しました",
-    }
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Supabase環境変数が設定されていません")
   }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
 }
 
-export async function checkStudentsTable() {
+export async function checkDatabase() {
   try {
-    console.log("studentsテーブル確認を開始します")
+    console.log("データベース接続確認を開始します")
+    const supabase = createSupabaseClient()
 
-    // テーブル構造を確認
-    const { data: tableInfo, error: tableError } = await adminSupabase.from("students").select("*").limit(1)
-
-    if (tableError) {
-      console.error("テーブル構造確認エラー:", tableError)
-      return {
-        success: false,
-        error: tableError.message,
-      }
-    }
-
-    // 全レコード数を取得
-    const { count, error: countError } = await adminSupabase
+    // 接続テスト
+    const { data: pingData, error: pingError } = await supabase
       .from("students")
-      .select("*", { count: "exact", head: true })
+      .select("count()", { count: "exact", head: true })
 
-    if (countError) {
-      console.error("レコード数取得エラー:", countError)
+    if (pingError) {
+      console.error("データベース接続エラー:", pingError)
       return {
         success: false,
-        error: countError.message,
-        structure: tableInfo && tableInfo.length > 0 ? Object.keys(tableInfo[0]) : [],
+        error: pingError.message,
+        details: {
+          code: pingError.code,
+          message: pingError.message,
+          hint: pingError.hint,
+        },
       }
     }
 
-    // サンプルレコードを取得
-    const { data: sampleData, error: sampleError } = await adminSupabase.from("students").select("*").limit(5)
+    // テーブル存在確認
+    const tables = ["students", "test_scores"]
+    const tableResults = {}
+
+    for (const table of tables) {
+      try {
+        console.log(`${table}テーブル確認中...`)
+        const { data, error } = await supabase.from(table).select("count()", { count: "exact", head: true })
+
+        if (error) {
+          console.error(`${table}テーブル確認エラー:`, error)
+          tableResults[table] = {
+            exists: false,
+            error: error.message,
+            details: {
+              code: error.code,
+              hint: error.hint,
+            },
+          }
+        } else {
+          console.log(`${table}テーブル確認完了`)
+          tableResults[table] = { exists: true }
+
+          // サンプルデータを取得
+          const { data: sampleData, error: sampleError } = await supabase.from(table).select("*").limit(2)
+
+          if (sampleError) {
+            tableResults[table].sampleError = sampleError.message
+          } else {
+            tableResults[table].sampleCount = sampleData?.length || 0
+            tableResults[table].sampleData = sampleData
+
+            // カラム情報を取得
+            if (sampleData && sampleData.length > 0) {
+              tableResults[table].columns = Object.keys(sampleData[0])
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`${table}テーブル確認エラー:`, e)
+        tableResults[table] = {
+          exists: false,
+          error: e instanceof Error ? e.message : "不明なエラー",
+        }
+      }
+    }
+
+    // 学生ログイン検証テスト
+    const testStudentId = "222056"
+    const testPassword = "2056"
+    console.log(`テスト学生認証を試みます: ID=${testStudentId}, パスワード=${testPassword}`)
+
+    // 異なる方法で学生を検索
+    const authMethods = [
+      {
+        name: "文字列として検索",
+        query: () => supabase.from("students").select("*").eq("student_id", testStudentId).maybeSingle(),
+      },
+      {
+        name: "数値として検索",
+        query: () =>
+          supabase.from("students").select("*").eq("student_id", Number.parseInt(testStudentId)).maybeSingle(),
+      },
+      {
+        name: "IDとして検索",
+        query: () => supabase.from("students").select("*").eq("id", testStudentId).maybeSingle(),
+      },
+    ]
+
+    const authResults = []
+    for (const method of authMethods) {
+      try {
+        const { data, error } = await method.query()
+        authResults.push({
+          method: method.name,
+          success: !error && data !== null,
+          data: data
+            ? {
+                id: data.id,
+                student_id: data.student_id,
+                name: data.name,
+                password_matches: data.password === testPassword,
+              }
+            : null,
+          error: error ? error.message : null,
+        })
+      } catch (e) {
+        authResults.push({
+          method: method.name,
+          success: false,
+          error: e instanceof Error ? e.message : "不明なエラー",
+        })
+      }
+    }
 
     return {
       success: true,
-      structure: tableInfo && tableInfo.length > 0 ? Object.keys(tableInfo[0]) : [],
-      count,
-      sampleData: sampleData || [],
-      sampleError: sampleError ? sampleError.message : null,
+      tableResults,
+      authResults,
+      environment: {
+        url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        anon_key_set: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      },
     }
   } catch (error) {
-    console.error("studentsテーブル確認エラー:", error)
+    console.error("データベース確認エラー:", error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : "studentsテーブル確認に失敗しました",
+      error: error instanceof Error ? error.message : "データベース確認に失敗しました",
     }
   }
 }
 
-export async function testStudentLogin(studentId: number, password: string) {
+export async function testStudentLogin(studentId: string, password: string) {
   try {
-    console.log(`学生ログインテスト - ID: ${studentId}, パスワード: ${password}`)
+    console.log(`学生ログインテスト: ID=${studentId}, パスワード=${password ? "****" : "なし"}`)
+    const supabase = createSupabaseClient()
 
-    // studentsテーブルから学生情報を取得
-    const { data, error } = await adminSupabase.from("students").select("*").eq("student_id", studentId).maybeSingle()
+    // 異なる方法で学生を検索
+    const queries = [
+      {
+        name: "文字列として検索",
+        query: supabase.from("students").select("*").eq("student_id", studentId).maybeSingle(),
+      },
+      {
+        name: "数値として検索",
+        query: supabase.from("students").select("*").eq("student_id", Number.parseInt(studentId)).maybeSingle(),
+      },
+      { name: "IDとして検索", query: supabase.from("students").select("*").eq("id", studentId).maybeSingle() },
+    ]
 
-    if (error) {
-      console.error("学生情報取得エラー:", error)
-      return {
-        success: false,
-        error: error.message,
+    const results = await Promise.all(queries.map((q) => q.query.catch((err) => ({ error: err }))))
+
+    const queryResults = queries.map((q, i) => ({
+      method: q.name,
+      success: !results[i].error && results[i].data !== null,
+      data: results[i].data
+        ? {
+            id: results[i].data.id,
+            student_id: results[i].data.student_id,
+            name: results[i].data.name,
+            password_matches: results[i].data.password === password,
+          }
+        : null,
+      error: results[i].error ? results[i].error.message : null,
+    }))
+
+    // 全データからの検証
+    const { data: allStudents, error: allStudentsError } = await supabase.from("students").select("*").limit(10)
+
+    let matchedStudent = null
+    if (!allStudentsError && allStudents && allStudents.length > 0) {
+      // IDが完全一致する学生を検索
+      const exact = allStudents.find(
+        (s) => String(s.student_id) === studentId || s.student_id === Number.parseInt(studentId),
+      )
+
+      if (exact) {
+        matchedStudent = {
+          id: exact.id,
+          student_id: exact.student_id,
+          name: exact.name,
+          password_matches: exact.password === password,
+        }
       }
     }
 
-    if (!data) {
-      return {
-        success: false,
-        error: "学生IDが見つかりません",
-      }
+    const allData = {
+      count: allStudents?.length || 0,
+      sample: allStudents?.slice(0, 3),
+      matched: matchedStudent,
     }
-
-    // パスワード検証
-    const passwordMatch = data.password === password
 
     return {
       success: true,
-      data: {
-        ...data,
-        password: "********", // パスワードを隠す
-      },
-      passwordMatch,
+      queryResults,
+      allData,
+      recommendation: matchedStudent
+        ? matchedStudent.password_matches
+          ? "認証成功: 正しい学生IDとパスワードです"
+          : "学生IDは正しいですが、パスワードが一致しません"
+        : "学生IDが見つかりませんでした。別のIDを試すか、データベースを確認してください",
     }
   } catch (error) {
     console.error("学生ログインテストエラー:", error)
@@ -141,4 +233,14 @@ export async function testStudentLogin(studentId: number, password: string) {
       error: error instanceof Error ? error.message : "学生ログインテストに失敗しました",
     }
   }
+}
+
+export async function checkEnvironment() {
+  const envVars = {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ? "設定済み" : "未設定",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "設定済み" : "未設定",
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? "設定済み" : "未設定",
+  }
+
+  return { success: true, envVars }
 }

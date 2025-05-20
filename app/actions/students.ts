@@ -25,7 +25,7 @@ export async function getStudents() {
     const supabase = createSupabaseClient()
 
     // studentsテーブルからデータを取得
-    const { data, error } = await supabase.from("students").select("*").order("student_id", { ascending: true })
+    const { data, error } = await supabase.from("students").select("*")
 
     if (error) {
       console.error("学生データ取得エラー:", error)
@@ -56,10 +56,7 @@ async function getStudentsFromTestScores() {
     console.log("test_scoresテーブルからデータを取得します")
     const supabase = createSupabaseClient()
 
-    const { data, error } = await supabase
-      .from("test_scores")
-      .select("student_id, student_name")
-      .order("student_id", { ascending: true })
+    const { data, error } = await supabase.from("test_scores").select("student_id, student_name")
 
     if (error) {
       console.error("テスト結果からの学生データ取得エラー:", error)
@@ -79,7 +76,7 @@ async function getStudentsFromTestScores() {
         uniqueStudentIds.set(item.student_id, {
           student_id: item.student_id,
           name: item.student_name || `学生${item.student_id}`, // student_nameがない場合、学生IDから生成
-          password: "password", // デフォルト値
+          password: String(item.student_id).slice(-4), // 学生IDの下4桁をパスワードとして設定
           created_at: new Date().toISOString(),
         })
       }
@@ -106,29 +103,19 @@ export async function addOrUpdateStudent(student: any) {
       return { success: false, error: "必須フィールドが不足しています" }
     }
 
-    // student_idが数値であることを確認
-    const studentId =
-      typeof student.student_id === "number"
-        ? student.student_id
-        : Number.parseInt(String(student.student_id).trim(), 10)
-
-    if (isNaN(studentId)) {
-      return { success: false, error: `無効な学生ID: ${student.student_id}` }
-    }
-
     console.log("学生データを保存します:", {
-      student_id: studentId,
+      student_id: student.student_id,
       name: student.name,
       password: student.password ? "********" : "未設定",
     })
 
     const supabase = createSupabaseClient()
 
-    // まず既存の学生を確認
+    // まず既存の学生を確認（文字列として検索）
     const { data: existingStudent, error: queryError } = await supabase
       .from("students")
-      .select("student_id")
-      .eq("student_id", studentId)
+      .select("*")
+      .eq("student_id", student.student_id)
       .maybeSingle()
 
     if (queryError) {
@@ -141,19 +128,19 @@ export async function addOrUpdateStudent(student: any) {
     try {
       if (existingStudent) {
         // 既存の学生を更新
-        console.log("既存の学生を更新します:", studentId)
+        console.log("既存の学生を更新します:", student.student_id)
         result = await supabase
           .from("students")
           .update({
             name: student.name,
             password: student.password,
           })
-          .eq("student_id", studentId)
+          .eq("student_id", student.student_id)
       } else {
         // 新しい学生を挿入
-        console.log("新しい学生を挿入します:", studentId)
+        console.log("新しい学生を挿入します:", student.student_id)
         result = await supabase.from("students").insert({
-          student_id: studentId,
+          student_id: student.student_id,
           name: student.name,
           password: student.password,
           created_at: student.created_at || new Date().toISOString(),
@@ -195,17 +182,6 @@ export async function importStudents(students: any[]) {
 
     for (const student of students) {
       try {
-        // student_idが数値であることを確認
-        if (typeof student.student_id !== "number") {
-          const numericId = Number.parseInt(String(student.student_id).trim(), 10)
-          if (isNaN(numericId)) {
-            errorCount++
-            errors.push(`無効な学生ID: ${student.student_id}`)
-            continue
-          }
-          student.student_id = numericId
-        }
-
         // 学生情報を保存
         const result = await addOrUpdateStudent(student)
 

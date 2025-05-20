@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { importTestResults } from "@/app/actions/test-results"
 import { CharacterIcon } from "./character-icon"
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from "lucide-react"
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Calendar } from "lucide-react"
 import Papa from "papaparse"
 
 interface TestResultsImportProps {
@@ -22,6 +22,8 @@ export default function TestResultsImport({ onSuccess, onImportSuccess }: TestRe
   const [file, setFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [testName, setTestName] = useState("AMT模擬試験")
+  const [testDate, setTestDate] = useState(new Date().toISOString().split("T")[0])
   const { toast } = useToast()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,6 +38,15 @@ export default function TestResultsImport({ onSuccess, onImportSuccess }: TestRe
       toast({
         title: "エラー",
         description: "ファイルを選択してください",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!testName.trim()) {
+      toast({
+        title: "エラー",
+        description: "テスト名を入力してください",
         variant: "destructive",
       })
       return
@@ -65,10 +76,9 @@ export default function TestResultsImport({ onSuccess, onImportSuccess }: TestRe
               mappedRow.student_id = row["番号"] || row["学生ID"] || row["student_id"] || ""
               mappedRow.student_name = row["氏名"] || row["学生名"] || row["student_name"] || ""
 
-              // テスト情報
-              mappedRow.test_name = row["テスト名"] || row["試験名"] || row["test_name"] || "模擬試験"
-              mappedRow.test_date =
-                row["テスト日"] || row["試験日"] || row["test_date"] || new Date().toISOString().split("T")[0]
+              // テスト情報 - 入力されたテスト名と日付を使用
+              mappedRow.test_name = testName
+              mappedRow.test_date = testDate
 
               // 科目別スコア
               mappedRow.medical_overview = row["医療概論"] || row["medical_overview"] || 0
@@ -163,6 +173,27 @@ export default function TestResultsImport({ onSuccess, onImportSuccess }: TestRe
       <CardContent>
         <div className="grid gap-4">
           <div className="grid gap-2">
+            <Label htmlFor="test-name">テスト名</Label>
+            <Input
+              id="test-name"
+              value={testName}
+              onChange={(e) => setTestName(e.target.value)}
+              placeholder="例: AMT模擬試験"
+              className="mb-2"
+            />
+
+            <Label htmlFor="test-date">テスト実施日</Label>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              <Input
+                id="test-date"
+                type="date"
+                value={testDate}
+                onChange={(e) => setTestDate(e.target.value)}
+                className="mb-4"
+              />
+            </div>
+
             <Label htmlFor="csv-file">CSVファイル</Label>
             <div className="flex items-center gap-2">
               <Input

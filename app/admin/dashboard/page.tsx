@@ -9,7 +9,7 @@ import Link from "next/link"
 import TestResultsImport from "@/components/test-results-import"
 import TestResultsList from "@/components/test-results-list"
 import { useToast } from "@/hooks/use-toast"
-import { Users, FileSpreadsheet, BarChart, LogOut, AlertCircle, RefreshCw, Bug } from "lucide-react"
+import { Users, FileSpreadsheet, LogOut, AlertCircle, RefreshCw, Bug } from "lucide-react"
 import { Header } from "@/components/header"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { getDashboardData } from "@/app/actions/dashboard" // サーバーアクションをインポート
@@ -237,16 +237,7 @@ export default function AdminDashboardPage() {
                 </p>
               </CardContent>
               <CardFooter className="bg-white dark:bg-brown-900 rounded-b-lg">
-                <Button
-                  variant="ghost"
-                  className="w-full text-brown-700 hover:bg-brown-100 dark:text-brown-200 dark:hover:bg-brown-800"
-                  asChild
-                >
-                  <Link href="/admin/analytics">
-                    <BarChart className="mr-2 h-4 w-4" />
-                    分析を表示
-                  </Link>
-                </Button>
+                <p className="w-full text-center text-brown-600 dark:text-brown-300 text-sm">実施されたテストの総数</p>
               </CardFooter>
             </Card>
           </div>
